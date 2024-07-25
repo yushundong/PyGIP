@@ -40,4 +40,4 @@ dataloading_test.ipynb
 dataloading.py
 pipeline.py
 setup.cfg
-requirements.txt
+requirements.txt.DS_Store
