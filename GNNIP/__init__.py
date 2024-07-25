@@ -1,1 +1,1 @@
-from gnnip.datasets import *
+from .datasets import *
