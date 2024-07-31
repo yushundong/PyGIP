@@ -31,6 +31,54 @@ class Gcn_Net(nn.Module):
         return x
 
 
+class Net_shadow(th.nn.Module):
+    def __init__(self, feature_number, label_number):
+        super(Net_shadow, self).__init__()
+        self.layer1 = GraphConv(feature_number, 16)
+        self.layer2 = GraphConv(16, label_number)
+
+    def forward(self, g, features):
+        x = th.nn.functional.relu(self.layer1(g, features))
+        # x = torch.nn.functional.dropout(x, 0.2)
+        # x = F.dropout(x, training=self.training)
+        x = self.layer2(g, x)
+        return x
+
+
+class Net_attack(nn.Module):
+    def __init__(self, feature_number, label_number):
+        super(Net_attack, self).__init__()
+        self.layers = nn.ModuleList()
+        # input layer
+        self.layers.append(GraphConv(feature_number, 16, activation=F.relu))
+        # output layer
+        self.layers.append(GraphConv(16, label_number))
+        self.dropout = nn.Dropout(p=0.5)
+
+    def forward(self, g, features):
+        x = F.relu(self.layers[0](g, features))
+        x = self.layers[1](g, x)
+        return x
+
+
+class MyNet(th.nn.Module):
+    """
+    Input - 1433
+    Output - 7
+    """
+
+    def __init__(self, in_feats, out_feats):
+        super(MyNet, self).__init__()
+
+        self.fc1 = th.nn.Linear(in_feats, 16)
+        self.fc2 = th.nn.Linear(16, out_feats)
+
+    def forward(self, x):
+        x = th.nn.functional.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x
+
+
 def evaluate(model, g, features, labels, mask):
     model.eval()
     with th.no_grad():
@@ -298,3 +346,244 @@ class MdoelExtractionAttack0(ModelExtractionAttack):
 
         print("========================Final results:=========================================")
         print("Accuracy:" + str(max_acc2) + "Fedility:" + str(max_acc1))
+
+
+class MdoelExtractionAttack1(ModelExtractionAttack):
+
+    def __init__(self, dataset, attack_node_fraction, selected_node_file, query_label_file, shadow_graph_file):
+        super().__init__(dataset, attack_node_fraction)
+        self.attack_node_number = 700
+        self.selected_node_file = selected_node_file
+        self.query_label_file = query_label_file
+        self.shadow_graph_file = shadow_graph_file
+
+    def attack(self):
+
+        # read the selected node file
+        selected_node_file = open(self.selected_node_file, "r")
+        lines1 = selected_node_file.readlines()
+        attack_nodes = []
+        for line_1 in lines1:
+            attack_nodes.append(int(line_1))
+        selected_node_file.close()
+
+        # find the testing node
+        testing_nodes = []
+        for i in range(self.node_number):
+            if i not in attack_nodes:
+                testing_nodes.append(i)
+
+        attack_features = self.features[attack_nodes]
+
+        # mark the test/train split.
+        for i in range(self.node_number):
+            if i in attack_nodes:
+                self.test_mask[i] = 0
+                self.train_mask[i] = 1
+            else:
+                self.test_mask[i] = 1
+                self.train_mask[i] = 0
+
+        sub_test_mask = self.test_mask
+
+        # get their labels
+        query_label_file = open(self.query_label_file, "r")
+        lines2 = query_label_file.readlines()
+        all_query_labels = []
+        attack_query = []
+        for line_2 in lines2:
+            all_query_labels.append(int(line_2.split()[1]))
+            if int(line_2.split()[0]) in attack_nodes:
+                attack_query.append(int(line_2.split()[1]))
+        query_label_file.close()
+
+        attack_query = torch.LongTensor(attack_query)
+        all_query_labels = torch.LongTensor(all_query_labels)
+
+        # build shadow graph
+        shadow_graph_file = open(self.shadow_graph_file, "r")
+        lines3 = shadow_graph_file.readlines()
+        adj_matrix = np.zeros(
+            (self.attack_node_number, self.attack_node_number))
+        for line_3 in lines3:
+            list_line = line_3.split()
+            adj_matrix[int(list_line[0])][int(list_line[1])] = 1
+            adj_matrix[int(list_line[1])][int(list_line[0])] = 1
+        shadow_graph_file.close()
+
+        g_shadow = np.asmatrix(adj_matrix)
+        sub_g = nx.from_numpy_array(g_shadow)
+
+        # add self loop
+        sub_g.remove_edges_from(nx.selfloop_edges(sub_g))
+        sub_g.add_edges_from(zip(sub_g.nodes(), sub_g.nodes()))
+        sub_g = DGLGraph(sub_g)
+        n_edges = sub_g.number_of_edges()
+
+        # normalization
+        degs = sub_g.in_degrees().float()
+        norm = torch.pow(degs, -0.5)
+        norm[torch.isinf(norm)] = 0
+        sub_g.ndata['norm'] = norm.unsqueeze(1)
+
+        # build GCN
+
+        # todo check this
+        # g = DGLGraph(data.graph)
+        # g_numpy = nx.to_numpy_array(data.graph)
+        sub_g_b = nx.from_numpy_array(
+            np.asmatrix(self.graph.adjacency_matrix().to_dense()))
+
+        # graph preprocess and calculate normalization factor
+        # sub_g_b = nx.from_numpy_array(sub_g_b)
+        # add self loop
+
+        sub_g_b.remove_edges_from(nx.selfloop_edges(sub_g_b))
+        sub_g_b.add_edges_from(zip(sub_g_b.nodes(), sub_g_b.nodes()))
+
+        sub_g_b = DGLGraph(sub_g_b)
+        n_edges = sub_g_b.number_of_edges()
+        # normalization
+        degs = sub_g_b.in_degrees().float()
+        norm = torch.pow(degs, -0.5)
+        norm[torch.isinf(norm)] = 0
+
+        sub_g_b.ndata['norm'] = norm.unsqueeze(1)
+
+        # Train the DNN
+        net = Net_shadow(self.feature_number, self.label_number)
+        print(net)
+
+        #
+        optimizer = torch.optim.Adam(
+            net.parameters(), lr=1e-2, weight_decay=5e-4)
+
+        dur = []
+
+        max_acc1 = 0
+        max_acc2 = 0
+
+        print("===================Model Extracting================================")
+
+        for epoch in range(200):
+            if epoch >= 3:
+                t0 = time.time()
+
+            net.train()
+            logits = net(sub_g, attack_features)
+            logp = torch.nn.functional.log_softmax(logits, dim=1)
+            loss = torch.nn.functional.nll_loss(logp, attack_query)
+
+            # weights = [1/num_0, 1/num_1, 1/num_2, 1/num_3, 1/num_4, 1/num_5, 1/num_6]
+            # class_weights = th.FloatTensor(weights)
+        # =============================================================================
+        #     criterion = torch.nn.CrossEntropyLoss()
+        #     loss = criterion(logp, attack_query)
+        # =============================================================================
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            if epoch >= 3:
+                dur.append(time.time() - t0)
+
+            acc1 = evaluate(net, sub_g_b, self.features,
+                            self.labels, sub_test_mask)
+            acc2 = evaluate(net, sub_g_b, self.features,
+                            all_query_labels, sub_test_mask)
+
+            if acc1 > max_acc1:
+                max_acc1 = acc1
+            if acc2 > max_acc2:
+                max_acc2 = acc2
+            print("Epoch {:05d} | Loss {:.4f} | Test Acc {:.4f} | Test Fid {:.4f} | Time(s) {:.4f}".format(
+                epoch, loss.item(), acc1, acc2, np.mean(dur)))
+
+        print("Final one:" + str(max_acc1) + "Fiderity: " + str(max_acc2))
+
+
+class MdoelExtractionAttack2(ModelExtractionAttack):
+    def __init__(self, dataset, attack_node_fraction):
+        super().__init__(dataset, attack_node_fraction)
+
+    def attack(self):
+
+        # sample nodes
+        attack_nodes = []
+        for i in range(self.attack_node_number):
+            candidate_node = random.randint(0, self.node_number - 1)
+            if candidate_node not in attack_nodes:
+                attack_nodes.append(candidate_node)
+
+        #
+
+        test_num = 0
+        for i in range(self.node_number):
+            if i in attack_nodes:
+                self.test_mask[i] = 0
+                self.train_mask[i] = 1
+                continue
+            else:
+                if test_num < 1000:
+                    self.test_mask[i] = 1
+                    self.train_mask[i] = 0
+                    test_num = test_num + 1
+                else:
+                    self.test_mask[i] = 0
+                    self.train_mask[i] = 0
+
+        self.gcn_Net.eval()
+
+        # Generate Label
+        logits_query = self.gcn_Net(self.graph, self.features)
+        _, labels_query = th.max(logits_query, dim=1)
+
+        syn_features_np = np.eye(self.node_number)
+        syn_features = th.FloatTensor(syn_features_np)
+
+        # normalization
+        degs = self.graph.in_degrees().float()
+        norm = th.pow(degs, -0.5)
+        norm[th.isinf(norm)] = 0
+        self.graph.ndata['norm'] = norm.unsqueeze(1)
+
+        net_attack = Net_attack(self.node_number, self.label_number)
+
+        optimizer_original = th.optim.Adam(
+            net_attack.parameters(), lr=5e-2, weight_decay=5e-4)
+        dur = []
+
+        max_acc1 = 0
+        max_acc2 = 0
+
+        for epoch in range(200):
+            if epoch >= 3:
+                t0 = time.time()
+
+            net_attack.train()
+            logits = net_attack(self.graph, syn_features)
+            logp = F.log_softmax(logits, 1)
+            loss = F.nll_loss(logp[self.train_mask],
+                              labels_query[self.train_mask])
+
+            optimizer_original.zero_grad()
+            loss.backward()
+            optimizer_original.step()
+
+            if epoch >= 3:
+                dur.append(time.time() - t0)
+
+            acc1 = evaluate(net_attack, self.graph, syn_features,
+                            self.labels, self.test_mask)
+            acc2 = evaluate(net_attack, self.graph, syn_features,
+                            labels_query, self.test_mask)
+            print("Epoch {:05d} | Loss {:.4f} | Test Acc {:.4f} | Test Fid  {:.4f} | Time(s) {:.4f}".format(
+                epoch, loss.item(), acc1, acc2, np.mean(dur)))
+
+            if acc1 > max_acc1:
+                max_acc1 = acc1
+            if acc2 > max_acc2:
+                max_acc2 = acc2
+
+        print("Accuracy: " + str(acc1) + " /Fidelity: " + str(acc2))
