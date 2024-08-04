@@ -96,7 +96,7 @@ class ModelExtractionAttack:
         Initialize the model extraction attack.
 
         :param dataset: The target machine learning model to attack.
-        :param attack_node_fraction: 
+        :param attack_node_fraction:
         """
         self.dataset = dataset
         # graph
@@ -156,8 +156,19 @@ class ModelExtractionAttack:
             # print("Epoch {:05d} | Loss {:.4f} | Test Acc {:.4f} | Time(s) {:.4f}".format(
                 # epoch, loss.item(), acc, np.mean(dur)))
 
-    def evaluate(self):
-        pass
+    def evaluate_helper(self, model, g, features, labels, mask):
+        model.eval()
+        with th.no_grad():
+            logits = model(g, features)
+            logits = logits[mask]
+            labels = labels[mask]
+            _, indices = th.max(logits, dim=1)
+            correct = th.sum(indices == labels)
+        return correct.item() * 1.0 / len(labels)
+
+    def evaluate(self, model, g, features, query_labels, labels, mask):
+
+        return self.evaluate_helper(model, g, features, query_labels, mask), self.evaluate_helper(model, g, features, labels, mask)
 
 
 class MdoelExtractionAttack0(ModelExtractionAttack):
@@ -336,10 +347,9 @@ class MdoelExtractionAttack0(ModelExtractionAttack):
 
             if epoch >= 3:
                 dur.append(time.time() - t0)
+            acc1, acc2 = self.evaluate(
+                net, g, self.features, labels_query, self.labels, self.test_mask)
 
-            acc1 = evaluate(net, g, self.features,
-                            labels_query, self.test_mask)
-            acc2 = evaluate(net, g, self.features, self.labels, self.test_mask)
             if acc1 > max_acc1:
                 max_acc1 = acc1
             if acc2 > max_acc2:
@@ -491,10 +501,8 @@ class MdoelExtractionAttack1(ModelExtractionAttack):
             if epoch >= 3:
                 dur.append(time.time() - t0)
 
-            acc1 = evaluate(net, sub_g_b, self.features,
-                            self.labels, sub_test_mask)
-            acc2 = evaluate(net, sub_g_b, self.features,
-                            all_query_labels, sub_test_mask)
+            acc1, acc2 = self.evaluate(
+                net, sub_g_b, self.features, self.labels, all_query_labels, self.test_mask)
 
             if acc1 > max_acc1:
                 max_acc1 = acc1
@@ -577,10 +585,8 @@ class MdoelExtractionAttack2(ModelExtractionAttack):
             if epoch >= 3:
                 dur.append(time.time() - t0)
 
-            acc1 = evaluate(net_attack, self.graph, syn_features,
-                            self.labels, self.test_mask)
-            acc2 = evaluate(net_attack, self.graph, syn_features,
-                            labels_query, self.test_mask)
+            acc1, acc2 = self.evaluate(
+                net_attack, self.graph, syn_features, self.labels, labels_query, self.test_mask)
             print("Epoch {:05d} | Loss {:.4f} | Test Acc {:.4f} | Test Fid  {:.4f} | Time(s) {:.4f}".format(
                 epoch, loss.item(), acc1, acc2, np.mean(dur)))
 
