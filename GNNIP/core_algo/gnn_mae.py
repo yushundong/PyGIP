@@ -156,6 +156,9 @@ class ModelExtractionAttack:
             # print("Epoch {:05d} | Loss {:.4f} | Test Acc {:.4f} | Time(s) {:.4f}".format(
                 # epoch, loss.item(), acc, np.mean(dur)))
 
+    def evaluate(self):
+        pass
+
 
 class MdoelExtractionAttack0(ModelExtractionAttack):
     def __init__(self, dataset, attack_node_fraction, alpha):
