@@ -23,8 +23,9 @@ class Cora(Dataset):
         super().__init__()
         data = citegrh.load_cora()
 
-        # graph
+        # graph, dataset_name
         self.graph = data[0]
+        self.dataset_name = "cora"
 
         # node_number, feature_numbe, label_number
         self.node_number = self.graph.number_of_nodes()
@@ -48,6 +49,7 @@ class Citesser(Dataset):
 
         # graph
         self.graph = data[0]
+        self.dataset_name = "citesser"
 
         # node_number, feature_numbe, label_number
         self.node_number = self.graph.number_of_nodes()
@@ -71,6 +73,7 @@ class PubMed(Dataset):
 
         # graph
         self.graph = data[0]
+        self.dataset_name = 'pubmed'
 
         # node_number, feature_numbe, label_number
         self.node_number = self.graph.number_of_nodes()

@@ -596,3 +596,49 @@ class MdoelExtractionAttack2(ModelExtractionAttack):
                 max_acc2 = acc2
 
         print("Accuracy: " + str(acc1) + " /Fidelity: " + str(acc2))
+
+
+class ModelExtractionAttack3(ModelExtractionAttack):
+    def __init__(self, dataset, attack_node_fraction, model_path):
+        super().__init__(dataset, attack_node_fraction)
+
+    def attack(self):
+        g_numpy = self.graph.adjacency_matrix().to_dense().numpy()
+        sub_graph_index_b = []
+
+        # This is to get sub_graph_index b and a
+        sub_graph_index_b = []
+        fileObject = open('./data/attack3_shadow_graph/' +
+                          self.dataset.dataset_name + '/target_graph_index.txt', 'r')
+        contents = fileObject.readlines()
+        for ip in contents:
+            sub_graph_index_b.append(int(ip))
+        fileObject.close()
+
+        sub_graph_index_a = []
+        fileObject = open('./data/attack3_shadow_graph/' + self.dataset.dataset_name +
+                          '/protential_1300_shadow_graph_index.txt', 'r')
+        contents = fileObject.readlines()
+        for ip in contents:
+            sub_graph_index_a.append(int(ip))
+        fileObject.close()
+
+        # choose attack features in graphA
+        attack_node = []
+        while len(attack_node) < attack_node_arg * self.node_number:
+            protential_node_index = random.randint(
+                0, len(sub_graph_index_b) - 1)
+            protential_node = sub_graph_index_b[protential_node_index]
+            if protential_node not in attack_node:
+                attack_node.append(int(protential_node))
+
+        attack_features = features[attack_node]
+        attack_labels = labels[attack_node]
+        shadow_features = features[sub_graph_index_a]
+        shadow_labels = labels[sub_graph_index_a]
+
+        sub_graph_g_A = g_numpy[sub_graph_index_a]
+        sub_graph_g_a = sub_graph_g_A[:, sub_graph_index_a]
+
+        sub_graph_attack = g_numpy[attack_node]
+        sub_graph_Attack = sub_graph_attack[:, attack_node]
