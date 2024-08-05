@@ -183,6 +183,7 @@ class MdoelExtractionAttack0(ModelExtractionAttack):
         g_matrix = np.asmatrix(g.adjacency_matrix().to_dense())
 
         # sample attack_node_number nodes
+        # sample from file or np.sample.
         sub_graph_node_index = []
         for i in range(self.attack_node_number):
             sub_graph_node_index.append(
