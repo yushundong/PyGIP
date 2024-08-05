@@ -167,6 +167,7 @@ class ModelExtractionAttack:
         return correct.item() * 1.0 / len(labels)
 
     def evaluate(self, model, g, features, query_labels, labels, mask):
+        # TODO add eval class
 
         return self.evaluate_helper(model, g, features, query_labels, mask), self.evaluate_helper(model, g, features, labels, mask)
 
