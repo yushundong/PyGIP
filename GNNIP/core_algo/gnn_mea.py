@@ -15,6 +15,52 @@ import time
 from dgl.nn.pytorch import GraphConv
 
 
+class GraphNeuralNetworkMetric:
+
+    def __init__(self, fidelity=0, accuracy=0, model=None, graph=None, features=None, mask=None, labels=None, query_labels=None):
+        """
+        Initializes the Metric class with true and predicted values,
+        and calculates fidelity and accuracy.
+        """
+
+        self.model = model
+        self.graph = graph
+        self.features = features
+        self.mask = mask
+        self.labels = labels
+        self.query_labels = query_labels
+
+        self.accuracy = accuracy
+        self.fidelity = fidelity
+
+    def evaluate_helper(self, model, graph, features, labels, mask):
+        if model == None or graph == None or features == None or labels == None or mask == None:
+            return None
+        model.eval()
+        with th.no_grad():
+            logits = model(graph, features)
+            logits = logits[mask]
+            labels = labels[mask]
+            _, indices = th.max(logits, dim=1)
+            correct = th.sum(indices == labels)
+        return correct.item() * 1.0 / len(labels)
+
+    def evaluate(self):
+        self.accuracy = self.evaluate_helper(
+            self.model, self.graph, self.features, self.labels, self.mask)
+        self.fidelity = self.evaluate_helper(
+            self.model, self.graph, self.features, self.query_labels, self.mask)
+
+    def __str__(self):
+        """
+        Returns a string representation of the Metric instance,
+        showing fidelity and accuracy.
+
+        :return: String representation of the Metric instance.
+        """
+        return f"Fidelity: {self.fidelity}, Accuracy: {self.accuracy}"
+
+
 class Gcn_Net(nn.Module):
     def __init__(self, feature_number, label_number):
         super(Gcn_Net, self).__init__()
@@ -155,21 +201,6 @@ class ModelExtractionAttack:
             # acc = evaluate(gcn_Net, g, features, labels, test_mask)
             # print("Epoch {:05d} | Loss {:.4f} | Test Acc {:.4f} | Time(s) {:.4f}".format(
                 # epoch, loss.item(), acc, np.mean(dur)))
-
-    def evaluate_helper(self, model, g, features, labels, mask):
-        model.eval()
-        with th.no_grad():
-            logits = model(g, features)
-            logits = logits[mask]
-            labels = labels[mask]
-            _, indices = th.max(logits, dim=1)
-            correct = th.sum(indices == labels)
-        return correct.item() * 1.0 / len(labels)
-
-    def evaluate(self, model, g, features, query_labels, labels, mask):
-        # TODO add eval class
-
-        return self.evaluate_helper(model, g, features, query_labels, mask), self.evaluate_helper(model, g, features, labels, mask)
 
 
 class MdoelExtractionAttack0(ModelExtractionAttack):
@@ -330,8 +361,7 @@ class MdoelExtractionAttack0(ModelExtractionAttack):
         dur = []
 
         print("=========Model Extracting==========================")
-        max_acc1 = 0
-        max_acc2 = 0
+        best_performance_metrics = GraphNeuralNetworkMetric()
         for epoch in range(200):
             if epoch >= 3:
                 t0 = time.time()
@@ -349,18 +379,19 @@ class MdoelExtractionAttack0(ModelExtractionAttack):
 
             if epoch >= 3:
                 dur.append(time.time() - t0)
-            acc1, acc2 = self.evaluate(
-                net, g, self.features, labels_query, self.labels, self.test_mask)
+            focus_gnn_metrics = GraphNeuralNetworkMetric(
+                0, 0, net, g, self.features, self.test_mask, self.labels, labels_query)
+            focus_gnn_metrics.evaluate()
 
-            if acc1 > max_acc1:
-                max_acc1 = acc1
-            if acc2 > max_acc2:
-                max_acc2 = acc2
+            best_performance_metrics.fidelity = max(
+                best_performance_metrics.fidelity, focus_gnn_metrics.fidelity)
+            best_performance_metrics.accuracy = max(
+                best_performance_metrics.accuracy, focus_gnn_metrics.accuracy)
             print("Epoch {:05d} | Loss {:.4f} | Test Acc {:.4f} | Test Fid {:.4f} | Time(s) {:.4f}".format(
-                epoch, loss.item(), acc2, acc1, np.mean(dur)))
+                epoch, loss.item(), focus_gnn_metrics.accuracy, focus_gnn_metrics.fidelity, np.mean(dur)))
 
         print("========================Final results:=========================================")
-        print("Accuracy:" + str(max_acc2) + "Fedility:" + str(max_acc1))
+        print(best_performance_metrics)
 
 
 class MdoelExtractionAttack1(ModelExtractionAttack):
@@ -475,8 +506,7 @@ class MdoelExtractionAttack1(ModelExtractionAttack):
 
         dur = []
 
-        max_acc1 = 0
-        max_acc2 = 0
+        best_performance_metrics = GraphNeuralNetworkMetric()
 
         print("===================Model Extracting================================")
 
@@ -503,17 +533,18 @@ class MdoelExtractionAttack1(ModelExtractionAttack):
             if epoch >= 3:
                 dur.append(time.time() - t0)
 
-            acc1, acc2 = self.evaluate(
-                net, sub_g_b, self.features, self.labels, all_query_labels, self.test_mask)
+            focus_gnn_metrics = GraphNeuralNetworkMetric(
+                0, 0, net, sub_g_b, self.features, self.test_mask, self.query, self.labels_query)
+            focus_gnn_metrics.evaluate()
 
-            if acc1 > max_acc1:
-                max_acc1 = acc1
-            if acc2 > max_acc2:
-                max_acc2 = acc2
+            best_performance_metrics.fidelity = max(
+                best_performance_metrics.fidelity, focus_gnn_metrics.fidelity)
+            best_performance_metrics.accuracy = max(
+                best_performance_metrics.accuracy, focus_gnn_metrics.accuracy)
             print("Epoch {:05d} | Loss {:.4f} | Test Acc {:.4f} | Test Fid {:.4f} | Time(s) {:.4f}".format(
-                epoch, loss.item(), acc1, acc2, np.mean(dur)))
+                epoch, loss.item(), focus_gnn_metrics.accuracy, focus_gnn_metrics.fidelity, np.mean(dur)))
 
-        print("Final one:" + str(max_acc1) + "Fiderity: " + str(max_acc2))
+        print(best_performance_metrics)
 
 
 class MdoelExtractionAttack2(ModelExtractionAttack):
@@ -567,8 +598,7 @@ class MdoelExtractionAttack2(ModelExtractionAttack):
             net_attack.parameters(), lr=5e-2, weight_decay=5e-4)
         dur = []
 
-        max_acc1 = 0
-        max_acc2 = 0
+        best_performance_metrics = GraphNeuralNetworkMetric()
 
         for epoch in range(200):
             if epoch >= 3:
@@ -587,60 +617,61 @@ class MdoelExtractionAttack2(ModelExtractionAttack):
             if epoch >= 3:
                 dur.append(time.time() - t0)
 
-            acc1, acc2 = self.evaluate(
-                net_attack, self.graph, syn_features, self.labels, labels_query, self.test_mask)
+            focus_gnn_metrics = GraphNeuralNetworkMetric(
+                0, 0, net_attack, self.graph, syn_features, self.test_mask, self.labels, labels_query)
+            focus_gnn_metrics.evaluate()
+
+            best_performance_metrics.fidelity = max(
+                best_performance_metrics.fidelity, focus_gnn_metrics.fidelity)
+            best_performance_metrics.accuracy = max(
+                best_performance_metrics.accuracy, focus_gnn_metrics.accuracy)
             print("Epoch {:05d} | Loss {:.4f} | Test Acc {:.4f} | Test Fid  {:.4f} | Time(s) {:.4f}".format(
-                epoch, loss.item(), acc1, acc2, np.mean(dur)))
+                epoch, loss.item(), focus_gnn_metrics.accuracy, focus_gnn_metrics.fidelity, np.mean(dur)))
 
-            if acc1 > max_acc1:
-                max_acc1 = acc1
-            if acc2 > max_acc2:
-                max_acc2 = acc2
-
-        print("Accuracy: " + str(acc1) + " /Fidelity: " + str(acc2))
+        print(best_performance_metrics)
 
 
-class ModelExtractionAttack3(ModelExtractionAttack):
-    def __init__(self, dataset, attack_node_fraction, model_path):
-        super().__init__(dataset, attack_node_fraction)
+# class ModelExtractionAttack3(ModelExtractionAttack):
+#     def __init__(self, dataset, attack_node_fraction, model_path):
+#         super().__init__(dataset, attack_node_fraction)
 
-    def attack(self):
-        g_numpy = self.graph.adjacency_matrix().to_dense().numpy()
-        sub_graph_index_b = []
+#     def attack(self):
+#         g_numpy = self.graph.adjacency_matrix().to_dense().numpy()
+#         sub_graph_index_b = []
 
-        # This is to get sub_graph_index b and a
-        sub_graph_index_b = []
-        fileObject = open('./data/attack3_shadow_graph/' +
-                          self.dataset.dataset_name + '/target_graph_index.txt', 'r')
-        contents = fileObject.readlines()
-        for ip in contents:
-            sub_graph_index_b.append(int(ip))
-        fileObject.close()
+#         # This is to get sub_graph_index b and a
+#         sub_graph_index_b = []
+#         fileObject = open('./data/attack3_shadow_graph/' +
+#                           self.dataset.dataset_name + '/target_graph_index.txt', 'r')
+#         contents = fileObject.readlines()
+#         for ip in contents:
+#             sub_graph_index_b.append(int(ip))
+#         fileObject.close()
 
-        sub_graph_index_a = []
-        fileObject = open('./data/attack3_shadow_graph/' + self.dataset.dataset_name +
-                          '/protential_1300_shadow_graph_index.txt', 'r')
-        contents = fileObject.readlines()
-        for ip in contents:
-            sub_graph_index_a.append(int(ip))
-        fileObject.close()
+#         sub_graph_index_a = []
+#         fileObject = open('./data/attack3_shadow_graph/' + self.dataset.dataset_name +
+#                           '/protential_1300_shadow_graph_index.txt', 'r')
+#         contents = fileObject.readlines()
+#         for ip in contents:
+#             sub_graph_index_a.append(int(ip))
+#         fileObject.close()
 
-        # choose attack features in graphA
-        attack_node = []
-        while len(attack_node) < attack_node_arg * self.node_number:
-            protential_node_index = random.randint(
-                0, len(sub_graph_index_b) - 1)
-            protential_node = sub_graph_index_b[protential_node_index]
-            if protential_node not in attack_node:
-                attack_node.append(int(protential_node))
+#         # choose attack features in graphA
+#         attack_node = []
+#         while len(attack_node) < attack_node_arg * self.node_number:
+#             protential_node_index = random.randint(
+#                 0, len(sub_graph_index_b) - 1)
+#             protential_node = sub_graph_index_b[protential_node_index]
+#             if protential_node not in attack_node:
+#                 attack_node.append(int(protential_node))
 
-        attack_features = features[attack_node]
-        attack_labels = labels[attack_node]
-        shadow_features = features[sub_graph_index_a]
-        shadow_labels = labels[sub_graph_index_a]
+#         attack_features = features[attack_node]
+#         attack_labels = labels[attack_node]
+#         shadow_features = features[sub_graph_index_a]
+#         shadow_labels = labels[sub_graph_index_a]
 
-        sub_graph_g_A = g_numpy[sub_graph_index_a]
-        sub_graph_g_a = sub_graph_g_A[:, sub_graph_index_a]
+#         sub_graph_g_A = g_numpy[sub_graph_index_a]
+#         sub_graph_g_a = sub_graph_g_A[:, sub_graph_index_a]
 
-        sub_graph_attack = g_numpy[attack_node]
-        sub_graph_Attack = sub_graph_attack[:, attack_node]
+#         sub_graph_attack = g_numpy[attack_node]
+#         sub_graph_Attack = sub_graph_attack[:, attack_node]

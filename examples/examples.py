@@ -3,5 +3,5 @@ from gnnip.core_algo import *
 
 
 c = Cora()
-a = MdoelExtractionAttack2(c, 0.25)
+a = MdoelExtractionAttack0(c, 0.25, 0.8)
 a.attack()
