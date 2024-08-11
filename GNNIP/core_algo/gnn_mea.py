@@ -15,6 +15,7 @@ import time
 from dgl.nn.pytorch import GraphConv
 
 
+# train model, if not load
 class Net2(nn.Module):
     def __init__(self):
         super(Net2, self).__init__()
@@ -169,7 +170,7 @@ def evaluate(model, g, features, labels, mask):
 
 
 class ModelExtractionAttack:
-    def __init__(self, dataset, attack_node_fraction):
+    def __init__(self, dataset, attack_node_fraction, model_path=None):
         """
         Initialize the model extraction attack.
 
@@ -195,8 +196,14 @@ class ModelExtractionAttack:
         self.train_mask = dataset.train_mask
         self.test_mask = dataset.test_mask
 
-        # Train the GCN traget model.
-        self.train_target_model()
+        if model_path == None:
+            # Train the GCN traget model.
+            self.train_target_model()
+        else:
+            self.net1 = Net()
+            optimizer_b = th.optim.Adam(
+                self.net1.parameters(), lr=1e-2, weight_decay=5e-4)
+            self.net1.load_state_dict(th.load(model_path))
 
     def train_target_model(self):
         # Train the GCN target model.
@@ -708,7 +715,7 @@ class MdoelExtractionAttack2(ModelExtractionAttack):
 
 class MdoelExtractionAttack4(ModelExtractionAttack):
     def __init__(self, dataset, attack_node_fraction, model_path):
-        super().__init__(dataset, attack_node_fraction)
+        super().__init__(dataset, attack_node_fraction, model_path)
         self.model_path = model_path
 
     def attack(self):
@@ -821,15 +828,10 @@ class MdoelExtractionAttack4(ModelExtractionAttack):
 
         dur = []
 
-        net1 = Net()
-        optimizer_b = th.optim.Adam(
-            net1.parameters(), lr=1e-2, weight_decay=5e-4)
-
         max_acc1 = 0
         max_acc2 = 0
         max_acc3 = 0
 
-        net1.load_state_dict(th.load(self.model_path))
         # th.save(net.state_dict(), "./models/attack_3_subgraph_shadow_model_pubmed.pkl")
 
         # for sub_graph_B
@@ -872,8 +874,8 @@ class MdoelExtractionAttack4(ModelExtractionAttack):
 
         sub_g_b.ndata['norm'] = norm.unsqueeze(1)
 
-        net1.eval()
-        logits_b = net1(sub_g_b, sub_features_b)
+        self.net1.eval()
+        logits_b = self.net1(sub_g_b, sub_features_b)
         # logits_b = F.log_softmax(logits_b, 1)
         _, query_b = th.max(logits_b, dim=1)
 
@@ -918,7 +920,7 @@ class MdoelExtractionAttack4(ModelExtractionAttack):
 
 class MdoelExtractionAttack5(ModelExtractionAttack):
     def __init__(self, dataset, attack_node_fraction, model_path):
-        super().__init__(dataset, attack_node_fraction)
+        super().__init__(dataset, attack_node_fraction, model_path)
         self.model_path = model_path
 
     def attack(self):
@@ -1027,15 +1029,10 @@ class MdoelExtractionAttack5(ModelExtractionAttack):
 
         dur = []
 
-        net1 = Net()
-        optimizer_b = th.optim.Adam(
-            net1.parameters(), lr=1e-2, weight_decay=5e-4)
-
         max_acc1 = 0
         max_acc2 = 0
         max_acc3 = 0
 
-        net1.load_state_dict(th.load(self.model_path))
         # th.save(net.state_dict(), "./models/attack_3_subgraph_shadow_model_pubmed.pkl")
 
         # for sub_graph_B
@@ -1087,8 +1084,8 @@ class MdoelExtractionAttack5(ModelExtractionAttack):
 
         sub_g_b.ndata['norm'] = norm.unsqueeze(1)
 
-        net1.eval()
-        logits_b = net1(sub_g_b, sub_features_b)
+        self.net1.eval()
+        logits_b = self.net1(sub_g_b, sub_features_b)
         # logits_b = F.log_softmax(logits_b, 1)
         _, query_b = th.max(logits_b, dim=1)
 
