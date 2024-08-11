@@ -162,9 +162,9 @@ class ModelExtractionAttack:
         # if cuda != None:
         #     norm = norm.cuda()
         focus_graph.ndata['norm'] = norm.unsqueeze(1)
-        self.gcn_Net = Gcn_Net(self.feature_number, self.label_number)
+        self.net1 = Gcn_Net(self.feature_number, self.label_number)
         optimizer = th.optim.Adam(
-            self.gcn_Net.parameters(), lr=1e-2, weight_decay=5e-4)
+            self.net1.parameters(), lr=1e-2, weight_decay=5e-4)
         dur = []
 
         print("=========Target Model Generating==========================")
@@ -172,8 +172,8 @@ class ModelExtractionAttack:
             if epoch >= 3:
                 t0 = time.time()
 
-            self.gcn_Net.train()
-            logits = self.gcn_Net(focus_graph, self.features)
+            self.net1.train()
+            logits = self.net1(focus_graph, self.features)
             logp = F.log_softmax(logits, 1)
             loss = F.nll_loss(logp[self.train_mask],
                               self.labels[self.train_mask])
@@ -191,8 +191,8 @@ class ModelExtractionAttack:
 
 
 class MdoelExtractionAttack0(ModelExtractionAttack):
-    def __init__(self, dataset, attack_node_fraction, alpha):
-        super().__init__(dataset, attack_node_fraction)
+    def __init__(self, dataset, attack_node_fraction, model_path=None, alpha=0.8):
+        super().__init__(dataset, attack_node_fraction, model_path)
         #
         self.alpha = alpha
 
@@ -315,9 +315,9 @@ class MdoelExtractionAttack0(ModelExtractionAttack):
         # test_mask = th.ByteTensor(data.test_mask)
         # g = DGLGraph(data.graph)
 
-        self.gcn_Net.eval()
+        self.net1.eval()
 
-        logits_query = self.gcn_Net(g, self.features)
+        logits_query = self.net1(g, self.features)
         _, labels_query = th.max(logits_query, dim=1)
 
         sub_labels_query = labels_query[total_sub_nodes]
@@ -533,8 +533,8 @@ class MdoelExtractionAttack1(ModelExtractionAttack):
 
 
 class MdoelExtractionAttack2(ModelExtractionAttack):
-    def __init__(self, dataset, attack_node_fraction):
-        super().__init__(dataset, attack_node_fraction)
+    def __init__(self, dataset, attack_node_fraction, model_path=None):
+        super().__init__(dataset, attack_node_fraction, model_path)
 
     def attack(self):
 
@@ -562,10 +562,10 @@ class MdoelExtractionAttack2(ModelExtractionAttack):
                     self.test_mask[i] = 0
                     self.train_mask[i] = 0
 
-        self.gcn_Net.eval()
+        self.net1.eval()
 
         # Generate Label
-        logits_query = self.gcn_Net(self.graph, self.features)
+        logits_query = self.net1(self.graph, self.features)
         _, labels_query = th.max(logits_query, dim=1)
 
         syn_features_np = np.eye(self.node_number)
