@@ -3,6 +3,6 @@ from gnnip.core_algo import *
 
 
 c = Cora()
-a = MdoelExtractionAttack4(
+a = MdoelExtractionAttack5(
     c, 0.25, './gnnip/models/attack_3_subgraph_shadow_model_cora_8159.pkl')
 a.attack()

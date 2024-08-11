@@ -15,41 +15,7 @@ import time
 from dgl.nn.pytorch import GraphConv
 
 
-# train model, if not load
-class Net2(nn.Module):
-    def __init__(self):
-        super(Net2, self).__init__()
-        self.layers = nn.ModuleList()
-        # input layer
-        self.layers.append(GraphConv(1433, 16, activation=F.relu))
-        # output layer
-        self.layers.append(GraphConv(16, 7))
-        self.dropout = nn.Dropout(p=0.5)
-
-    def forward(self, g, features):
-        x = F.relu(self.layers[0](g, features))
-        x = self.layers[1](g, x)
-        return x
-
-
-class Net(nn.Module):
-    def __init__(self):
-        super(Net, self).__init__()
-        self.layers = nn.ModuleList()
-        # input layer
-        self.layers.append(GraphConv(1433, 16, activation=F.relu))
-        # output layer
-        self.layers.append(GraphConv(16, 7))
-        self.dropout = nn.Dropout(p=0.5)
-
-    def forward(self, g, features):
-        x = F.relu(self.layers[0](g, features))
-        x = self.layers[1](g, x)
-        return x
-
-
 class GraphNeuralNetworkMetric:
-
     def __init__(self, fidelity=0, accuracy=0, model=None, graph=None, features=None, mask=None, labels=None, query_labels=None):
         """
         Initializes the Metric class with true and predicted values,
@@ -140,24 +106,6 @@ class Net_attack(nn.Module):
         return x
 
 
-class MyNet(th.nn.Module):
-    """
-    Input - 1433
-    Output - 7
-    """
-
-    def __init__(self, in_feats, out_feats):
-        super(MyNet, self).__init__()
-
-        self.fc1 = th.nn.Linear(in_feats, 16)
-        self.fc2 = th.nn.Linear(16, out_feats)
-
-    def forward(self, x):
-        x = th.nn.functional.relu(self.fc1(x))
-        x = self.fc2(x)
-        return x
-
-
 def evaluate(model, g, features, labels, mask):
     model.eval()
     with th.no_grad():
@@ -200,7 +148,7 @@ class ModelExtractionAttack:
             # Train the GCN traget model.
             self.train_target_model()
         else:
-            self.net1 = Net()
+            self.net1 = Gcn_Net(self.feature_number, self.label_number)
             optimizer_b = th.optim.Adam(
                 self.net1.parameters(), lr=1e-2, weight_decay=5e-4)
             self.net1.load_state_dict(th.load(model_path))
@@ -879,7 +827,7 @@ class MdoelExtractionAttack4(ModelExtractionAttack):
         # logits_b = F.log_softmax(logits_b, 1)
         _, query_b = th.max(logits_b, dim=1)
 
-        net2 = Net2()
+        net2 = Gcn_Net(self.feature_number, self.label_number)
         optimizer_a = th.optim.Adam(
             net2.parameters(), lr=1e-2, weight_decay=5e-4)
 
@@ -1089,7 +1037,7 @@ class MdoelExtractionAttack5(ModelExtractionAttack):
         # logits_b = F.log_softmax(logits_b, 1)
         _, query_b = th.max(logits_b, dim=1)
 
-        net2 = Net2()
+        net2 = Gcn_Net(self.feature_number, self.label_number)
         optimizer_a = th.optim.Adam(
             net2.parameters(), lr=1e-2, weight_decay=5e-4)
 
