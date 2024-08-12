@@ -135,6 +135,7 @@ class ModelExtractionAttack:
         self.label_number = dataset.label_number
         self.attack_node_number = int(
             dataset.node_number * attack_node_fraction)
+        self.attack_node_fraction = attack_node_fraction
 
         # features, labels
         self.features = dataset.features
@@ -190,7 +191,7 @@ class ModelExtractionAttack:
                 # epoch, loss.item(), acc, np.mean(dur)))
 
 
-class MdoelExtractionAttack0(ModelExtractionAttack):
+class ModelExtractionAttack0(ModelExtractionAttack):
     def __init__(self, dataset, attack_node_fraction, model_path=None, alpha=0.8):
         super().__init__(dataset, attack_node_fraction, model_path)
         #
@@ -379,7 +380,7 @@ class MdoelExtractionAttack0(ModelExtractionAttack):
         print(best_performance_metrics)
 
 
-class MdoelExtractionAttack1(ModelExtractionAttack):
+class ModelExtractionAttack1(ModelExtractionAttack):
 
     def __init__(self, dataset, attack_node_fraction, selected_node_file, query_label_file, shadow_graph_file):
         super().__init__(dataset, attack_node_fraction)
@@ -532,7 +533,7 @@ class MdoelExtractionAttack1(ModelExtractionAttack):
         print(best_performance_metrics)
 
 
-class MdoelExtractionAttack2(ModelExtractionAttack):
+class ModelExtractionAttack2(ModelExtractionAttack):
     def __init__(self, dataset, attack_node_fraction, model_path=None):
         super().__init__(dataset, attack_node_fraction, model_path)
 
@@ -616,52 +617,205 @@ class MdoelExtractionAttack2(ModelExtractionAttack):
         print(best_performance_metrics)
 
 
-# class ModelExtractionAttack3(ModelExtractionAttack):
-#     def __init__(self, dataset, attack_node_fraction, model_path):
-#         super().__init__(dataset, attack_node_fraction)
+class ModelExtractionAttack3(ModelExtractionAttack):
+    def __init__(self, dataset, attack_node_fraction, model_path=None):
+        super().__init__(dataset, attack_node_fraction, model_path)
 
-#     def attack(self):
-#         g_numpy = self.graph.adjacency_matrix().to_dense().numpy()
-#         sub_graph_index_b = []
+    def attack(self):
+        g_numpy = self.graph.adjacency_matrix().to_dense().numpy()
+        sub_graph_index_b = []
 
-#         # This is to get sub_graph_index b and a
-#         sub_graph_index_b = []
-#         fileObject = open('./data/attack3_shadow_graph/' +
-#                           self.dataset.dataset_name + '/target_graph_index.txt', 'r')
-#         contents = fileObject.readlines()
-#         for ip in contents:
-#             sub_graph_index_b.append(int(ip))
-#         fileObject.close()
+        # sample nodes
+        sub_graph_index_b = []
+        fileObject = open('./gnnip/data/attack3_shadow_graph/' + self.dataset.dataset_name +
+                          '/target_graph_index.txt', 'r')
+        contents = fileObject.readlines()
+        for ip in contents:
+            sub_graph_index_b.append(int(ip))
+        fileObject.close()
+        print(len(sub_graph_index_b))
 
-#         sub_graph_index_a = []
-#         fileObject = open('./data/attack3_shadow_graph/' + self.dataset.dataset_name +
-#                           '/protential_1300_shadow_graph_index.txt', 'r')
-#         contents = fileObject.readlines()
-#         for ip in contents:
-#             sub_graph_index_a.append(int(ip))
-#         fileObject.close()
+        sub_graph_index_a = []
+        fileObject = open('./gnnip/data/attack3_shadow_graph/' + self.dataset.dataset_name +
+                          '/protential_1300_shadow_graph_index.txt', 'r')
+        contents = fileObject.readlines()
+        for ip in contents:
+            sub_graph_index_a.append(int(ip))
+        fileObject.close()
 
-#         # choose attack features in graphA
-#         attack_node = []
-#         while len(attack_node) < attack_node_arg * self.node_number:
-#             protential_node_index = random.randint(
-#                 0, len(sub_graph_index_b) - 1)
-#             protential_node = sub_graph_index_b[protential_node_index]
-#             if protential_node not in attack_node:
-#                 attack_node.append(int(protential_node))
+        # choose attack features in graphA
+        attack_node = []
+        while len(attack_node) < self.attack_node_fraction:
+            protential_node_index = random.randint(
+                0, len(sub_graph_index_b) - 1)
+            protential_node = sub_graph_index_b[protential_node_index]
+            if protential_node not in attack_node:
+                attack_node.append(int(protential_node))
+        print(attack_node)
 
-#         attack_features = features[attack_node]
-#         attack_labels = labels[attack_node]
-#         shadow_features = features[sub_graph_index_a]
-#         shadow_labels = labels[sub_graph_index_a]
+        attack_features = self.features[attack_node]
+        attack_labels = self.labels[attack_node]
+        shadow_features = self.features[sub_graph_index_a]
+        shadow_labels = self.labels[sub_graph_index_a]
 
-#         sub_graph_g_A = g_numpy[sub_graph_index_a]
-#         sub_graph_g_a = sub_graph_g_A[:, sub_graph_index_a]
+        sub_graph_g_A = g_numpy[sub_graph_index_a]
+        sub_graph_g_a = sub_graph_g_A[:, sub_graph_index_a]
 
-#         sub_graph_attack = g_numpy[attack_node]
-#         sub_graph_Attack = sub_graph_attack[:, attack_node]
+        sub_graph_attack = g_numpy[attack_node]
+        sub_graph_Attack = sub_graph_attack[:, attack_node]
 
-class MdoelExtractionAttack4(ModelExtractionAttack):
+        generated_graph_1 = np.hstack(
+            (sub_graph_Attack, np.zeros((len(attack_node), len(sub_graph_index_a)))))
+        generated_graph_2 = np.hstack(
+            (np.zeros((len(sub_graph_g_a), len(attack_node))), sub_graph_g_a))
+        generated_graph = np.vstack((generated_graph_1, generated_graph_2))
+
+        # caculate the distance of this features to every node in graphA
+        generated_features = np.vstack((attack_features, shadow_features))
+        generated_labels = np.hstack((attack_labels, shadow_labels))
+
+        # train two model and evaluate
+        generated_train_mask = np.ones(len(generated_features))
+        generated_test_mask = np.ones(len(generated_features))
+
+        generated_features = th.FloatTensor(generated_features)
+        generated_labels = th.LongTensor(generated_labels)
+        generated_train_mask = th.ByteTensor(generated_train_mask)
+        generated_test_mask = th.ByteTensor(generated_test_mask)
+
+        generated_g = nx.from_numpy_array(generated_graph)
+
+        generated_g.remove_edges_from(nx.selfloop_edges(generated_g))
+        generated_g.add_edges_from(
+            zip(generated_g.nodes(), generated_g.nodes()))
+
+        generated_g = DGLGraph(generated_g)
+        n_edges = generated_g.number_of_edges()
+        # normalization
+        degs = generated_g.in_degrees().float()
+        norm = th.pow(degs, -0.5)
+        norm[th.isinf(norm)] = 0
+
+        generated_g.ndata['norm'] = norm.unsqueeze(1)
+
+        dur = []
+
+        max_acc1 = 0
+        max_acc2 = 0
+        max_acc3 = 0
+
+        # Here we use a pre-trained model, you may replace the model with yours.
+
+        # th.save(net.state_dict(), "./models/attack_3_subgraph_shadow_model_pubmed.pkl")
+
+        # for sub_graph_B
+        sub_graph_g_B = g_numpy[sub_graph_index_b]
+        sub_graph_g_b = sub_graph_g_B[:, sub_graph_index_b]
+        sub_graph_features_b = self.features[sub_graph_index_b]
+        sub_graph_labels_b = self.labels[sub_graph_index_b]
+        sub_graph_train_mask_b = self.train_mask[sub_graph_index_b]
+        sub_graph_test_mask_b = self.test_mask[sub_graph_index_b]
+
+        # print(len(sub_graph_test_mask_b), len(generated_train_mask))
+        # for i in range(len(generated_train_mask)):
+        #     if i >= 140:
+        #         generated_train_mask[i] = 0
+        #         sub_graph_test_mask_b[i] = 1
+        #     else:
+        #         generated_train_mask[i] = 1
+        #         sub_graph_test_mask_b[i] = 0
+
+        for i in range(len(generated_train_mask)):
+            if i >= 140:
+                generated_train_mask[i] = 0
+                sub_graph_test_mask_b[i] = 1
+            else:
+                generated_train_mask[i] = 1
+                sub_graph_test_mask_b[i] = 0
+
+        for i in range(len(sub_graph_test_mask_b)):
+            if i >= 140:
+                sub_graph_train_mask_b[i] = 0
+                sub_graph_test_mask_b[i] = 1
+            else:
+                sub_graph_train_mask_b[i] = 1
+                sub_graph_test_mask_b[i] = 0
+        # =============================================================================
+        # for i in range(len(sub_graph_test_mask_b)):
+        #     #if sub_graph_test_mask_b[i] == 0:
+        #     sub_graph_test_mask_b[i] = 1
+        # =============================================================================
+
+        sub_features_b = th.FloatTensor(sub_graph_features_b)
+        sub_labels_b = th.LongTensor(sub_graph_labels_b)
+        sub_train_mask_b = sub_graph_train_mask_b
+        sub_test_mask_b = sub_graph_test_mask_b
+        # sub_g_b = DGLGraph(nx.from_numpy_matrix(sub_graph_g_b))
+
+        sub_g_b = nx.from_numpy_array(sub_graph_g_b)
+
+        # graph preprocess and calculate normalization factor
+        # sub_g_b = nx.from_numpy_array(sub_g_b)
+        # add self loop
+
+        sub_g_b.remove_edges_from(nx.selfloop_edges(sub_g_b))
+        sub_g_b.add_edges_from(zip(sub_g_b.nodes(), sub_g_b.nodes()))
+
+        sub_g_b = DGLGraph(sub_g_b)
+        n_edges = sub_g_b.number_of_edges()
+        # normalization
+        degs = sub_g_b.in_degrees().float()
+        norm = th.pow(degs, -0.5)
+        norm[th.isinf(norm)] = 0
+
+        sub_g_b.ndata['norm'] = norm.unsqueeze(1)
+
+        self.net1.eval()
+        logits_b = self.net1(sub_g_b, sub_features_b)
+        # logits_b = F.log_softmax(logits_b, 1)
+        _, query_b = th.max(logits_b, dim=1)
+
+        net2 = Gcn_Net(self.feature_number, self.label_number)
+        optimizer_a = th.optim.Adam(
+            net2.parameters(), lr=1e-2, weight_decay=5e-4)
+
+        for epoch in range(300):
+            if epoch >= 3:
+                t0 = time.time()
+
+            net2.train()
+            logits_a = net2(generated_g, generated_features)
+            logp_a = F.log_softmax(logits_a, 1)
+            # generated_train_mask
+            loss_a = F.nll_loss(logp_a[generated_train_mask],
+                                generated_labels[generated_train_mask])
+
+            optimizer_a.zero_grad()
+            loss_a.backward()
+            optimizer_a.step()
+
+            if epoch >= 3:
+                dur.append(time.time() - t0)
+
+            acc2 = evaluate(net2, sub_g_b, sub_features_b,
+                            sub_labels_b, sub_test_mask_b)
+            acc3 = evaluate(net2, sub_g_b, sub_features_b,
+                            query_b, sub_test_mask_b)
+
+            print("Epoch {:05d} | Loss {:.4f} | Test Acc {:.4f} | Test Fid {:.4f} | Time(s) {:.4f}".format(
+                epoch, loss_a.item(), acc2, acc3, np.mean(dur)))
+
+            if acc2 > max_acc2:
+                max_acc2 = acc2
+            if acc3 > max_acc3:
+                max_acc3 = acc3
+
+        print("===============" + str(max_acc1) +
+              "===========================================")
+        print(str(max_acc2) + " fedility: " + str(max_acc3))
+
+
+class ModelExtractionAttack4(ModelExtractionAttack):
     def __init__(self, dataset, attack_node_fraction, model_path):
         super().__init__(dataset, attack_node_fraction, model_path)
         self.model_path = model_path
@@ -743,7 +897,6 @@ class MdoelExtractionAttack4(ModelExtractionAttack):
                         generated_graph[len(attack_features) + j][i] = 1
                         break
                 if loop == 999:
-
                     print("one isolated node!")
 
             # train two model and evaluate
@@ -790,6 +943,7 @@ class MdoelExtractionAttack4(ModelExtractionAttack):
         sub_graph_train_mask_b = self.train_mask[sub_graph_index_b]
         sub_graph_test_mask_b = self.test_mask[sub_graph_index_b]
 
+        print(len(sub_graph_test_mask_b), len(sub_graph_test_mask_b))
         for i in range(len(sub_graph_test_mask_b)):
             if i >= 300:
                 sub_graph_train_mask_b[i] = 0
@@ -866,7 +1020,7 @@ class MdoelExtractionAttack4(ModelExtractionAttack):
         print(str(max_acc2) + " fedility: " + str(max_acc3))
 
 
-class MdoelExtractionAttack5(ModelExtractionAttack):
+class ModelExtractionAttack5(ModelExtractionAttack):
     def __init__(self, dataset, attack_node_fraction, model_path):
         super().__init__(dataset, attack_node_fraction, model_path)
         self.model_path = model_path
@@ -953,8 +1107,8 @@ class MdoelExtractionAttack5(ModelExtractionAttack):
 
         generated_features = th.FloatTensor(generated_features)
         generated_labels = th.LongTensor(generated_labels)
-        generated_train_mask = th.ByteTensor(generated_train_mask)
-        generated_test_mask = th.ByteTensor(generated_test_mask)
+        # generated_train_mask = th.ByteTensor(generated_train_mask)
+        # generated_test_mask = th.ByteTensor(generated_test_mask)
 
         generated_g = nx.from_numpy_array(generated_graph)
 
