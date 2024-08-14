@@ -633,7 +633,6 @@ class ModelExtractionAttack3(ModelExtractionAttack):
         for ip in contents:
             sub_graph_index_b.append(int(ip))
         fileObject.close()
-        print(len(sub_graph_index_b))
 
         sub_graph_index_a = []
         fileObject = open('./gnnip/data/attack3_shadow_graph/' + self.dataset.dataset_name +
@@ -645,13 +644,12 @@ class ModelExtractionAttack3(ModelExtractionAttack):
 
         # choose attack features in graphA
         attack_node = []
-        while len(attack_node) < self.attack_node_fraction:
+        while len(attack_node) < self.attack_node_number:
             protential_node_index = random.randint(
                 0, len(sub_graph_index_b) - 1)
             protential_node = sub_graph_index_b[protential_node_index]
             if protential_node not in attack_node:
                 attack_node.append(int(protential_node))
-        print(attack_node)
 
         attack_features = self.features[attack_node]
         attack_labels = self.labels[attack_node]
@@ -676,6 +674,7 @@ class ModelExtractionAttack3(ModelExtractionAttack):
 
         # train two model and evaluate
         generated_train_mask = np.ones(len(generated_features))
+        print("generated_train_mask", len(generated_train_mask))
         generated_test_mask = np.ones(len(generated_features))
 
         generated_features = th.FloatTensor(generated_features)
@@ -716,16 +715,7 @@ class ModelExtractionAttack3(ModelExtractionAttack):
         sub_graph_train_mask_b = self.train_mask[sub_graph_index_b]
         sub_graph_test_mask_b = self.test_mask[sub_graph_index_b]
 
-        # print(len(sub_graph_test_mask_b), len(generated_train_mask))
-        # for i in range(len(generated_train_mask)):
-        #     if i >= 140:
-        #         generated_train_mask[i] = 0
-        #         sub_graph_test_mask_b[i] = 1
-        #     else:
-        #         generated_train_mask[i] = 1
-        #         sub_graph_test_mask_b[i] = 0
-
-        for i in range(len(generated_train_mask)):
+        for i in range(len(sub_graph_test_mask_b)):
             if i >= 140:
                 generated_train_mask[i] = 0
                 sub_graph_test_mask_b[i] = 1
