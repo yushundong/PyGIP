@@ -186,10 +186,6 @@ class ModelExtractionAttack:
             if epoch >= 3:
                 dur.append(time.time() - t0)
 
-            # acc = evaluate(gcn_Net, g, features, labels, test_mask)
-            # print("Epoch {:05d} | Loss {:.4f} | Test Acc {:.4f} | Time(s) {:.4f}".format(
-                # epoch, loss.item(), acc, np.mean(dur)))
-
 
 class ModelExtractionAttack0(ModelExtractionAttack):
     def __init__(self, dataset, attack_node_fraction, model_path=None, alpha=0.8):
@@ -219,6 +215,10 @@ class ModelExtractionAttack0(ModelExtractionAttack):
                 syn_nodes.append(first_order_node_index)
                 two_step_node_index = g_matrix[first_order_node_index, :].nonzero()[
                     1].tolist()
+                # =============================================================================
+                for second_order_node_index in two_step_node_index:
+                    syn_nodes.append(second_order_node_index)
+                # =============================================================================
 
         sub_graph_syn_node_index = list(
             set(syn_nodes) - set(sub_graph_node_index))
@@ -538,8 +538,6 @@ class ModelExtractionAttack2(ModelExtractionAttack):
             candidate_node = random.randint(0, self.node_number - 1)
             if candidate_node not in attack_nodes:
                 attack_nodes.append(candidate_node)
-
-        #
 
         test_num = 0
         for i in range(self.node_number):

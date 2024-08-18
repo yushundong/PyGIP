@@ -12,6 +12,6 @@ c = Cora()
 # a = ModelExtractionAttack3(c, 0.25)
 # a = ModelExtractionAttack4(
 #     c, 0.25, './gnnip/models/attack_3_subgraph_shadow_model_cora_8159.pkl')
-a = ModelExtractionAttack5(
-    c, 0.25, './gnnip/models/attack_3_subgraph_shadow_model_cora_8159.pkl')
+# a = ModelExtractionAttack5(
+#     c, 0.25, './gnnip/models/attack_3_subgraph_shadow_model_cora_8159.pkl')
 a.attack()
