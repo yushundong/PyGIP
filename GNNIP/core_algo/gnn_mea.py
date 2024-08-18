@@ -375,7 +375,7 @@ class ModelExtractionAttack0(ModelExtractionAttack):
 
 class ModelExtractionAttack1(ModelExtractionAttack):
 
-    def __init__(self, dataset, attack_node_fraction, selected_node_file, query_label_file, shadow_graph_file):
+    def __init__(self, dataset, attack_node_fraction, selected_node_file, query_label_file, shadow_graph_file=None):
         super().__init__(dataset, attack_node_fraction)
         self.attack_node_number = 700
         self.selected_node_file = selected_node_file
@@ -513,7 +513,7 @@ class ModelExtractionAttack1(ModelExtractionAttack):
                 dur.append(time.time() - t0)
 
             focus_gnn_metrics = GraphNeuralNetworkMetric(
-                0, 0, net, sub_g_b, self.features, self.test_mask, self.query, self.labels_query)
+                0, 0, net, sub_g_b, self.features, self.test_mask, all_query_labels, self.labels)
             focus_gnn_metrics.evaluate()
 
             best_performance_metrics.fidelity = max(
