@@ -201,12 +201,11 @@ class ModelExtractionAttack0(ModelExtractionAttack):
         g = self.graph.clone()
         g_matrix = np.asmatrix(g.adjacency_matrix().to_dense())
 
-        # sample attack_node_number nodes
-        # sample from file or np.sample.
+        # Step1, sample attack_node_number nodes.
         sub_graph_node_index = []
-        for i in range(self.attack_node_number):
-            sub_graph_node_index.append(
-                random.randint(0, self.node_number - 1))
+
+        sub_graph_node_index = np.random.choice(
+            self.node_number, self.attack_node_number, replace=False).tolist()
 
         sub_labels = self.labels[sub_graph_node_index]
 
@@ -309,12 +308,6 @@ class ModelExtractionAttack0(ModelExtractionAttack):
         sub_train_mask = sub_train_mask
         sub_test_mask = self.test_mask
         # sub_g = DGLGraph(nx.from_numpy_matrix(sub_g))
-
-        # features = th.FloatTensor(data.features)
-        # labels = th.LongTensor(data.labels)
-        # train_mask = th.ByteTensor(data.train_mask)
-        # test_mask = th.ByteTensor(data.test_mask)
-        # g = DGLGraph(data.graph)
 
         self.net1.eval()
 
@@ -769,6 +762,8 @@ class ModelExtractionAttack3(ModelExtractionAttack):
         optimizer_a = th.optim.Adam(
             net2.parameters(), lr=1e-2, weight_decay=5e-4)
 
+        best_performance_metrics = GraphNeuralNetworkMetric()
+
         for epoch in range(300):
             if epoch >= 3:
                 t0 = time.time()
@@ -787,26 +782,22 @@ class ModelExtractionAttack3(ModelExtractionAttack):
             if epoch >= 3:
                 dur.append(time.time() - t0)
 
-            acc2 = evaluate(net2, sub_g_b, sub_features_b,
-                            sub_labels_b, sub_test_mask_b)
-            acc3 = evaluate(net2, sub_g_b, sub_features_b,
-                            query_b, sub_test_mask_b)
+            focus_gnn_metrics = GraphNeuralNetworkMetric(
+                0, 0, net2, sub_g_b, sub_features_b, sub_test_mask_b, sub_labels_b, query_b)
+            focus_gnn_metrics.evaluate()
 
-            print("Epoch {:05d} | Loss {:.4f} | Test Acc {:.4f} | Test Fid {:.4f} | Time(s) {:.4f}".format(
-                epoch, loss_a.item(), acc2, acc3, np.mean(dur)))
+            best_performance_metrics.fidelity = max(
+                best_performance_metrics.fidelity, focus_gnn_metrics.fidelity)
+            best_performance_metrics.accuracy = max(
+                best_performance_metrics.accuracy, focus_gnn_metrics.accuracy)
+            print("Epoch {:05d} | Loss {:.4f} | Test Acc {:.4f} | Test Fid  {:.4f} | Time(s) {:.4f}".format(
+                epoch, loss_a.item(), focus_gnn_metrics.accuracy, focus_gnn_metrics.fidelity, np.mean(dur)))
 
-            if acc2 > max_acc2:
-                max_acc2 = acc2
-            if acc3 > max_acc3:
-                max_acc3 = acc3
-
-        print("===============" + str(max_acc1) +
-              "===========================================")
-        print(str(max_acc2) + " fedility: " + str(max_acc3))
+        print(best_performance_metrics)
 
 
 class ModelExtractionAttack4(ModelExtractionAttack):
-    def __init__(self, dataset, attack_node_fraction, model_path):
+    def __init__(self, dataset, attack_node_fraction, model_path=None):
         super().__init__(dataset, attack_node_fraction, model_path)
         self.model_path = model_path
 
@@ -974,6 +965,7 @@ class ModelExtractionAttack4(ModelExtractionAttack):
         net2 = Gcn_Net(self.feature_number, self.label_number)
         optimizer_a = th.optim.Adam(
             net2.parameters(), lr=1e-2, weight_decay=5e-4)
+        best_performance_metrics = GraphNeuralNetworkMetric()
 
         for epoch in range(300):
             if epoch >= 3:
@@ -992,26 +984,22 @@ class ModelExtractionAttack4(ModelExtractionAttack):
             if epoch >= 3:
                 dur.append(time.time() - t0)
 
-            acc2 = evaluate(net2, sub_g_b, sub_features_b,
-                            sub_labels_b, sub_test_mask_b)
-            acc3 = evaluate(net2, sub_g_b, sub_features_b,
-                            query_b, sub_test_mask_b)
+            focus_gnn_metrics = GraphNeuralNetworkMetric(
+                0, 0, net2, sub_g_b, sub_features_b, sub_test_mask_b, sub_labels_b, query_b)
+            focus_gnn_metrics.evaluate()
 
-            print("Epoch {:05d} | Loss {:.4f} | Test Acc {:.4f} | Time(s) {:.4f}".format(
-                epoch, loss_a.item(), acc2, np.mean(dur)))
+            best_performance_metrics.fidelity = max(
+                best_performance_metrics.fidelity, focus_gnn_metrics.fidelity)
+            best_performance_metrics.accuracy = max(
+                best_performance_metrics.accuracy, focus_gnn_metrics.accuracy)
+            print("Epoch {:05d} | Loss {:.4f} | Test Acc {:.4f} | Test Fid  {:.4f} | Time(s) {:.4f}".format(
+                epoch, loss_a.item(), focus_gnn_metrics.accuracy, focus_gnn_metrics.fidelity, np.mean(dur)))
 
-            if acc2 > max_acc2:
-                max_acc2 = acc2
-            if acc3 > max_acc3:
-                max_acc3 = acc3
-
-        print("===============" + str(max_acc1) +
-              "===========================================")
-        print(str(max_acc2) + " fedility: " + str(max_acc3))
+        print(best_performance_metrics)
 
 
 class ModelExtractionAttack5(ModelExtractionAttack):
-    def __init__(self, dataset, attack_node_fraction, model_path):
+    def __init__(self, dataset, attack_node_fraction, model_path=None):
         super().__init__(dataset, attack_node_fraction, model_path)
         self.model_path = model_path
 
@@ -1184,7 +1172,7 @@ class ModelExtractionAttack5(ModelExtractionAttack):
         net2 = Gcn_Net(self.feature_number, self.label_number)
         optimizer_a = th.optim.Adam(
             net2.parameters(), lr=1e-2, weight_decay=5e-4)
-
+        best_performance_metrics = GraphNeuralNetworkMetric()
         for epoch in range(300):
             if epoch >= 3:
                 t0 = time.time()
@@ -1201,20 +1189,15 @@ class ModelExtractionAttack5(ModelExtractionAttack):
 
             if epoch >= 3:
                 dur.append(time.time() - t0)
+            focus_gnn_metrics = GraphNeuralNetworkMetric(
+                0, 0, net2, sub_g_b, sub_features_b, sub_test_mask_b, sub_labels_b, query_b)
+            focus_gnn_metrics.evaluate()
 
-            acc2 = evaluate(net2, sub_g_b, sub_features_b,
-                            sub_labels_b, sub_test_mask_b)
-            acc3 = evaluate(net2, sub_g_b, sub_features_b,
-                            query_b, sub_test_mask_b)
+            best_performance_metrics.fidelity = max(
+                best_performance_metrics.fidelity, focus_gnn_metrics.fidelity)
+            best_performance_metrics.accuracy = max(
+                best_performance_metrics.accuracy, focus_gnn_metrics.accuracy)
+            print("Epoch {:05d} | Loss {:.4f} | Test Acc {:.4f} | Test Fid  {:.4f} | Time(s) {:.4f}".format(
+                epoch, loss_a.item(), focus_gnn_metrics.accuracy, focus_gnn_metrics.fidelity, np.mean(dur)))
 
-            print("Epoch {:05d} | Loss {:.4f} | Test Acc {:.4f} | Time(s) {:.4f}".format(
-                epoch, loss_a.item(), acc2, np.mean(dur)))
-
-            if acc2 > max_acc2:
-                max_acc2 = acc2
-            if acc3 > max_acc3:
-                max_acc3 = acc3
-
-        print("===============" + str(max_acc1) +
-              "===========================================")
-        print(str(max_acc2) + " fedility: " + str(max_acc3))
+        print(best_performance_metrics)
