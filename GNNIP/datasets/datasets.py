@@ -42,14 +42,14 @@ class Cora(Dataset):
         self.test_mask = th.BoolTensor(self.graph.ndata['test_mask'])
 
 
-class Citesser(Dataset):
+class Citeseer(Dataset):
     def __init__(self):
         super().__init__()
         data = citegrh.load_citeseer()
 
         # graph
         self.graph = data[0]
-        self.dataset_name = "citesser"
+        self.dataset_name = "citeseer"
 
         # node_number, feature_numbe, label_number
         self.node_number = self.graph.number_of_nodes()
