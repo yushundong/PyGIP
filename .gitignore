@@ -6,8 +6,8 @@ __pycache__/*
 
 
 
-*.txt
-*.pickle
+# *.txt
+# *.pickle
 *.sh
 *.md
 *.pt
