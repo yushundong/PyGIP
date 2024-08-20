@@ -599,8 +599,8 @@ class ModelExtractionAttack2(ModelExtractionAttack):
                 best_performance_metrics.fidelity, focus_gnn_metrics.fidelity)
             best_performance_metrics.accuracy = max(
                 best_performance_metrics.accuracy, focus_gnn_metrics.accuracy)
-            print("Epoch {:05d} | Loss {:.4f} | Test Acc {:.4f} | Test Fid  {:.4f} | Time(s) {:.4f}".format(
-                epoch, loss.item(), focus_gnn_metrics.accuracy, focus_gnn_metrics.fidelity, np.mean(dur)))
+            # print("Epoch {:05d} | Loss {:.4f} | Test Acc {:.4f} | Test Fid  {:.4f} | Time(s) {:.4f}".format(
+            #     epoch, loss.item(), focus_gnn_metrics.accuracy, focus_gnn_metrics.fidelity, np.mean(dur)))
 
         print(best_performance_metrics)
 
@@ -781,8 +781,8 @@ class ModelExtractionAttack3(ModelExtractionAttack):
                 best_performance_metrics.fidelity, focus_gnn_metrics.fidelity)
             best_performance_metrics.accuracy = max(
                 best_performance_metrics.accuracy, focus_gnn_metrics.accuracy)
-            print("Epoch {:05d} | Loss {:.4f} | Test Acc {:.4f} | Test Fid  {:.4f} | Time(s) {:.4f}".format(
-                epoch, loss_a.item(), focus_gnn_metrics.accuracy, focus_gnn_metrics.fidelity, np.mean(dur)))
+            # print("Epoch {:05d} | Loss {:.4f} | Test Acc {:.4f} | Test Fid  {:.4f} | Time(s) {:.4f}".format(
+            #     epoch, loss_a.item(), focus_gnn_metrics.accuracy, focus_gnn_metrics.fidelity, np.mean(dur)))
 
         print(best_performance_metrics)
 
@@ -979,8 +979,8 @@ class ModelExtractionAttack4(ModelExtractionAttack):
                 best_performance_metrics.fidelity, focus_gnn_metrics.fidelity)
             best_performance_metrics.accuracy = max(
                 best_performance_metrics.accuracy, focus_gnn_metrics.accuracy)
-            print("Epoch {:05d} | Loss {:.4f} | Test Acc {:.4f} | Test Fid  {:.4f} | Time(s) {:.4f}".format(
-                epoch, loss_a.item(), focus_gnn_metrics.accuracy, focus_gnn_metrics.fidelity, np.mean(dur)))
+            # print("Epoch {:05d} | Loss {:.4f} | Test Acc {:.4f} | Test Fid  {:.4f} | Time(s) {:.4f}".format(
+            #     epoch, loss_a.item(), focus_gnn_metrics.accuracy, focus_gnn_metrics.fidelity, np.mean(dur)))
 
         print(best_performance_metrics)
 
@@ -1180,7 +1180,7 @@ class ModelExtractionAttack5(ModelExtractionAttack):
                 best_performance_metrics.fidelity, focus_gnn_metrics.fidelity)
             best_performance_metrics.accuracy = max(
                 best_performance_metrics.accuracy, focus_gnn_metrics.accuracy)
-            print("Epoch {:05d} | Loss {:.4f} | Test Acc {:.4f} | Test Fid  {:.4f} | Time(s) {:.4f}".format(
-                epoch, loss_a.item(), focus_gnn_metrics.accuracy, focus_gnn_metrics.fidelity, np.mean(dur)))
+            # print("Epoch {:05d} | Loss {:.4f} | Test Acc {:.4f} | Test Fid  {:.4f} | Time(s) {:.4f}".format(
+            #     epoch, loss_a.item(), focus_gnn_metrics.accuracy, focus_gnn_metrics.fidelity, np.mean(dur)))
 
         print(best_performance_metrics)
