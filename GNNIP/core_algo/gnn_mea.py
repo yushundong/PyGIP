@@ -13,6 +13,7 @@ import torch.nn.functional as F
 from dgl import DGLGraph
 import time
 from dgl.nn.pytorch import GraphConv
+from tqdm import tqdm
 
 
 class GraphNeuralNetworkMetric:
@@ -169,7 +170,7 @@ class ModelExtractionAttack:
         dur = []
 
         print("=========Target Model Generating==========================")
-        for epoch in range(200):
+        for epoch in tqdm(range(200)):
             if epoch >= 3:
                 t0 = time.time()
 
@@ -341,7 +342,7 @@ class ModelExtractionAttack0(ModelExtractionAttack):
 
         print("=========Model Extracting==========================")
         best_performance_metrics = GraphNeuralNetworkMetric()
-        for epoch in range(200):
+        for epoch in tqdm(range(200)):
             if epoch >= 3:
                 t0 = time.time()
 
@@ -366,8 +367,6 @@ class ModelExtractionAttack0(ModelExtractionAttack):
                 best_performance_metrics.fidelity, focus_gnn_metrics.fidelity)
             best_performance_metrics.accuracy = max(
                 best_performance_metrics.accuracy, focus_gnn_metrics.accuracy)
-            print("Epoch {:05d} | Loss {:.4f} | Test Acc {:.4f} | Test Fid {:.4f} | Time(s) {:.4f}".format(
-                epoch, loss.item(), focus_gnn_metrics.accuracy, focus_gnn_metrics.fidelity, np.mean(dur)))
 
         print("========================Final results:=========================================")
         print(best_performance_metrics)
@@ -489,7 +488,7 @@ class ModelExtractionAttack1(ModelExtractionAttack):
 
         print("===================Model Extracting================================")
 
-        for epoch in range(200):
+        for epoch in tqdm(range(200)):
             if epoch >= 3:
                 t0 = time.time()
 
@@ -520,8 +519,6 @@ class ModelExtractionAttack1(ModelExtractionAttack):
                 best_performance_metrics.fidelity, focus_gnn_metrics.fidelity)
             best_performance_metrics.accuracy = max(
                 best_performance_metrics.accuracy, focus_gnn_metrics.accuracy)
-            print("Epoch {:05d} | Loss {:.4f} | Test Acc {:.4f} | Test Fid {:.4f} | Time(s) {:.4f}".format(
-                epoch, loss.item(), focus_gnn_metrics.accuracy, focus_gnn_metrics.fidelity, np.mean(dur)))
 
         print(best_performance_metrics)
 
@@ -577,7 +574,7 @@ class ModelExtractionAttack2(ModelExtractionAttack):
 
         best_performance_metrics = GraphNeuralNetworkMetric()
 
-        for epoch in range(200):
+        for epoch in tqdm(range(200)):
             if epoch >= 3:
                 t0 = time.time()
 
@@ -690,10 +687,6 @@ class ModelExtractionAttack3(ModelExtractionAttack):
 
         dur = []
 
-        max_acc1 = 0
-        max_acc2 = 0
-        max_acc3 = 0
-
         # Here we use a pre-trained model, you may replace the model with yours.
 
         # th.save(net.state_dict(), "./models/attack_3_subgraph_shadow_model_pubmed.pkl")
@@ -762,7 +755,7 @@ class ModelExtractionAttack3(ModelExtractionAttack):
 
         best_performance_metrics = GraphNeuralNetworkMetric()
 
-        for epoch in range(300):
+        for epoch in tqdm(range(300)):
             if epoch >= 3:
                 t0 = time.time()
 
@@ -908,10 +901,6 @@ class ModelExtractionAttack4(ModelExtractionAttack):
 
         dur = []
 
-        max_acc1 = 0
-        max_acc2 = 0
-        max_acc3 = 0
-
         # th.save(net.state_dict(), "./models/attack_3_subgraph_shadow_model_pubmed.pkl")
 
         # for sub_graph_B
@@ -965,7 +954,7 @@ class ModelExtractionAttack4(ModelExtractionAttack):
             net2.parameters(), lr=1e-2, weight_decay=5e-4)
         best_performance_metrics = GraphNeuralNetworkMetric()
 
-        for epoch in range(300):
+        for epoch in tqdm(range(300)):
             if epoch >= 3:
                 t0 = time.time()
 
@@ -1107,10 +1096,6 @@ class ModelExtractionAttack5(ModelExtractionAttack):
 
         dur = []
 
-        max_acc1 = 0
-        max_acc2 = 0
-        max_acc3 = 0
-
         # th.save(net.state_dict(), "./models/attack_3_subgraph_shadow_model_pubmed.pkl")
 
         # for sub_graph_B
@@ -1171,7 +1156,7 @@ class ModelExtractionAttack5(ModelExtractionAttack):
         optimizer_a = th.optim.Adam(
             net2.parameters(), lr=1e-2, weight_decay=5e-4)
         best_performance_metrics = GraphNeuralNetworkMetric()
-        for epoch in range(300):
+        for epoch in tqdm(range(300)):
             if epoch >= 3:
                 t0 = time.time()
 

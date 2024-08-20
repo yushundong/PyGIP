@@ -3,10 +3,10 @@ from gnnip.datasets.datasets import *
 from gnnip.core_algo import *
 
 
-# dataset = Cora()
+dataset = Cora()
 # dataset = Citeseer()
 # dataset = PubMed()
-# a = ModelExtractionAttack0(dataset, 0.25)
+a = ModelExtractionAttack0(dataset, 0.25)
 # a = ModelExtractionAttack1(
 #     Cora(), 0.25, "./gnnip/data/attack2_generated_graph/cora/selected_index.txt",
 #     "./gnnip/data/attack2_generated_graph/cora/query_labels_cora.txt",
