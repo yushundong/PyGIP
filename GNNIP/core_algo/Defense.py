@@ -24,6 +24,7 @@ from dgl.nn import SAGEConv
 from torch.utils.data import DataLoader
 from dgl.dataloading import NodeCollator
 from tqdm import tqdm
+import os
 # from dgl.dataloading.dataloader import enable_cpu_affinity
 
 class graph_to_dataset:
@@ -181,6 +182,24 @@ class Defense:
         merged_graph.ndata['wm_mask'] = wm_mask
 
         return merged_graph
+
+    def generate_extended_label_file(self, datasetCora_merge, original_node_count, new_node_count, output_file):
+        labels = datasetCora_merge.labels
+        
+        num_classes = len(torch.unique(datasetCora_merge.labels))
+        
+        file_exists = os.path.isfile(output_file)
+        
+        with open(output_file, 'w') as f:
+            
+            for i in range(original_node_count):
+                f.write(f"{i} {labels[i]}\n")
+        
+            import random
+            for i in range(original_node_count, original_node_count + new_node_count):
+                new_label = random.randint(0, num_classes - 1)
+                f.write(f"{i} {new_label}\n")
+
     def watermark_attack(self, dataset, attack_name, dataset_name):
         datasetCora = Watermark_sage(dataset,0.25)
         datasetCora.attack()
@@ -195,6 +214,10 @@ class Defense:
                 attack.attack()
                 flag = True
             elif (attack_name == 2):
+                original_node_count = 2708  
+                new_node_count = 50  
+                output_file = "./GNNIP/data/attack2_generated_graph/cora/query_labels_cora.txt"
+                self.generate_extended_label_file(datasetCora_merge, original_node_count, new_node_count, output_file)
                 attack = ModelExtractionAttack1(
                     datasetCora_merge, 0.25, "./GNNIP/data/attack2_generated_graph/cora/selected_index.txt",
                     "./GNNIP/data/attack2_generated_graph/cora/query_labels_cora.txt",
@@ -225,6 +248,10 @@ class Defense:
                 attack.attack()
                 flag = True
             elif (attack_name == 2):
+                original_node_count = 3327 
+                new_node_count = 50  
+                output_file = "./GNNIP/data/attack2_generated_graph/citeseer/query_labels_citeseer.txt"
+                self.generate_extended_label_file(datasetCora_merge, original_node_count, new_node_count, output_file)
                 attack = ModelExtractionAttack1(
                     datasetCora_merge, 0.25, "./GNNIP/data/attack2_generated_graph/citeseer/selected_index.txt",
                     "./GNNIP/data/attack2_generated_graph/citeseer/query_labels_citeseer.txt",
@@ -255,6 +282,10 @@ class Defense:
                 attack.attack()
                 flag = True
             elif (attack_name == 2):
+                original_node_count = 19717 
+                new_node_count = 50  
+                output_file = "./GNNIP/data/attack2_generated_graph/pubmed/query_labels_pubmed.txt"
+                self.generate_extended_label_file(datasetCora_merge, original_node_count, new_node_count, output_file)
                 attack = ModelExtractionAttack1(
                     datasetCora_merge, 0.25, "./GNNIP/data/attack2_generated_graph/pubmed/selected_index.txt",
                     "./GNNIP/data/attack2_generated_graph/pubmed/query_labels_pubmed.txt",
@@ -402,7 +433,7 @@ class Watermark_sage(Defense):
         print('Final results')
         print(f'Non-Marked Acc: {nonmarked_acc:.4f}, Marked Acc: {marked_acc:.4f}, Watermark Acc: {watermark_acc:.4f}')
 
-attack_name = int(input("Please choose the number:\n1.ModelExtractionAttack0\n2.ModelExtractionAttack1\n3.ModelExtractionAttack2\n4.ModelExtractionAttack3\n5.ModelExtractionAttack4\n"))
+attack_name = int(input("Please choose the number:\n1.ModelExtractionAttack0\n2.ModelExtractionAttack1\n3.ModelExtractionAttack2\n4.ModelExtractionAttack3\n5.ModelExtractionAttack4\n6.ModelExtractionAttack5\n"))
 dataset_name = int(input("Please choose the number:\n1.Cora\n2.Citeseer\n3.PubMed\n"))
 if (dataset_name == 1):
     defense = Watermark_sage(Cora(),0.25)
