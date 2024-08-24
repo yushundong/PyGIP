@@ -3,10 +3,10 @@ from gnnip.datasets.datasets import *
 from gnnip.core_algo import *
 
 
-dataset = Cora()
+# dataset = Cora()
 # dataset = Citeseer()
 # dataset = PubMed()
-a = ModelExtractionAttack0(dataset, 0.25)
+# a = ModelExtractionAttack0(dataset, 0.25)
 # a = ModelExtractionAttack1(
 #     Cora(), 0.25, "./gnnip/data/attack2_generated_graph/cora/selected_index.txt",
 #     "./gnnip/data/attack2_generated_graph/cora/query_labels_cora.txt",
@@ -33,4 +33,62 @@ a = ModelExtractionAttack0(dataset, 0.25)
 #     Citeseer(), 0.25, './gnnip/models/attack_3_subgraph_shadow_model_citeseer_6966.pkl')
 # a = ModelExtractionAttack5(
 #     PubMed(), 0.25, './gnnip/models/attack_3_subgraph_shadow_model_pubmed_8063.pkl')
-a.attack()
+# a.attack()
+
+
+def run_attack(attack_type, dataset_name):
+    if dataset_name == "Cora":
+        dataset = Cora()
+    elif dataset_name == "Citeseer":
+        dataset = Citeseer()
+    elif dataset_name == "PubMed":
+        dataset = PubMed()
+    else:
+        print("Invalid dataset selected.")
+        return
+
+    switch = {
+        0: lambda: ModelExtractionAttack0(dataset, 0.25),
+        1: lambda: ModelExtractionAttack1(
+            dataset, 0.25,
+            "./gnnip/data/attack2_generated_graph/{}/selected_index.txt".format(
+                dataset_name.lower()),
+            "./gnnip/data/attack2_generated_graph/{}/query_labels_{}.txt".format(
+                dataset_name.lower(), dataset_name.lower()),
+            "./gnnip/data/attack2_generated_graph/{}/graph_label0_657_667.txt".format(dataset_name.lower()) if dataset_name == "PubMed" else
+            "./gnnip/data/attack2_generated_graph/{}/graph_label0_604_525.txt".format(dataset_name.lower()) if dataset_name == "Citeseer" else
+            "./gnnip/data/attack2_generated_graph/{}/graph_label0_564_541.txt".format(
+                dataset_name.lower())
+        ),
+        2: lambda: ModelExtractionAttack2(dataset, 0.25),
+        3: lambda: ModelExtractionAttack3(dataset, 0.25),
+        4: lambda: ModelExtractionAttack4(
+            dataset, 0.25,
+            './gnnip/models/attack_3_subgraph_shadow_model_{}_8159.pkl'.format(dataset_name.lower()) if dataset_name == "Cora" else
+            './gnnip/models/attack_3_subgraph_shadow_model_{}_6966.pkl'.format(dataset_name.lower()) if dataset_name == "Citeseer" else
+            './gnnip/models/attack_3_subgraph_shadow_model_{}_8063.pkl'.format(
+                dataset_name.lower())
+        ),
+        5: lambda: ModelExtractionAttack5(
+            dataset, 0.25,
+            './gnnip/models/attack_3_subgraph_shadow_model_{}_8159.pkl'.format(dataset_name.lower()) if dataset_name == "Cora" else
+            './gnnip/models/attack_3_subgraph_shadow_model_{}_6966.pkl'.format(dataset_name.lower()) if dataset_name == "Citeseer" else
+            './gnnip/models/attack_3_subgraph_shadow_model_{}_8063.pkl'.format(
+                dataset_name.lower())
+        ),
+    }
+
+    attack = switch.get(attack_type, lambda: "Invalid attack type selected.")
+    a = attack()
+
+    if hasattr(a, 'attack'):
+        a.attack()
+    else:
+        print(a)
+
+
+dataset_name = input("Enter dataset name (Cora, Citeseer, PubMed): ")
+attack_type = int(input("Enter attack type (0-5): "))
+
+
+run_attack(attack_type, dataset_name)
