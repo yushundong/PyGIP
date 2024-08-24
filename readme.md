@@ -7,8 +7,8 @@ pip install dgl -f https://data.dgl.ai/wheels/repo.html #due to dgl issues, unfo
 export PYTHONPATH=`pwd`
 
 # Quick testing
-python3 example/example.py
-
+python3 examples/examples.py
+python examples/defense.py
 ```
 
 # Attack
@@ -443,17 +443,13 @@ FileNotFoundError: [Errno 2] No such file or directory: './gnnip/data/pubmed/tar
 
 # Defense
 
+```
+python examples/defense.py
+```
+
 ## Attack0-Watermark
 
 ### 1. Attack0-Watermark on Cora
-
-Run
-
-```
-
-python Defense.py
-
-```
 
 Follow the instructions to enter 1 and 1 in sequence
 
@@ -506,14 +502,6 @@ Watermark Graph - Accuracy: 0.24
 
 ### 2. Attack0-Watermark on Citeseer
 
-Run
-
-```
-
-python Defense.py
-
-```
-
 Follow the instructions to enter 1 and 2 in sequence
 
 ```
@@ -564,14 +552,6 @@ Watermark Graph - Accuracy: 0.06
 ```
 
 ### 3. Attack0-Watermark on PubMed
-
-Run
-
-```
-
-python Defense.py
-
-```
 
 Follow the instructions to enter 1 and 3 in sequence
 
@@ -625,14 +605,6 @@ Watermark Graph - Accuracy: 0.32
 ## Attack1-Watermark
 
 ### 1. Attack1-Watermark on Cora
-
-Run
-
-```
-
-python Defense.py
-
-```
 
 Follow the instructions to enter 2 and 1 in sequence
 
@@ -688,14 +660,6 @@ Watermark Graph - Accuracy: 0.12
 
 ### 2. Attack1-Watermark on Citeseer
 
-Run
-
-```
-
-python Defense.py
-
-```
-
 Follow the instructions to enter 2 and 2 in sequence
 
 ```
@@ -749,14 +713,6 @@ Watermark Graph - Accuracy: 0.18
 ```
 
 ### 3. Attack1-Watermark on PubMed
-
-Run
-
-```
-
-python Defense.py
-
-```
 
 Follow the instructions to enter 2 and 3 in sequence
 
@@ -814,14 +770,6 @@ Watermark Graph - Accuracy: 0.44
 
 ### 1. Attack2-Watermark on Cora
 
-Run
-
-```
-
-python Defense.py
-
-```
-
 Follow the instructions to enter 3 and 1 in sequence
 
 ```
@@ -869,14 +817,6 @@ Watermark Graph - Accuracy: 0.1
 
 ### 2. Attack2-Watermark on Citeseer
 
-Run
-
-```
-
-python Defense.py
-
-```
-
 Follow the instructions to enter 3 and 2 in sequence
 
 ```
@@ -923,14 +863,6 @@ Watermark Graph - Accuracy: 0.22
 ```
 
 ### 3. Attack3-Watermark on PubMed
-
-Run
-
-```
-
-python Defense.py
-
-```
 
 Follow the instructions to enter 3 and 3 in sequence
 
@@ -980,14 +912,6 @@ Watermark Graph - Accuracy: 0.34
 ## Attack3-Watermark
 
 ### 1. Attack3-Watermark on Cora
-
-Run
-
-```
-
-python Defense.py
-
-```
 
 Follow the instructions to enter 4 and 1 in sequence
 
@@ -1045,14 +969,6 @@ Watermark Graph - Accuracy: 0.14
 
 ### 2. Attack3-Watermark on Citeseer
 
-Run
-
-```
-
-python Defense.py
-
-```
-
 Follow the instructions to enter 4 and 2 in sequence
 
 ```
@@ -1108,14 +1024,6 @@ IndexError: index 1846 is out of bounds for dimension 0 with size 1846
 
 ### 3. Attack3-Watermark on PubMed
 
-Run
-
-```
-
-python Defense.py
-
-```
-
 Follow the instructions to enter 4 and 3 in sequence
 
 ```
@@ -1170,14 +1078,6 @@ FileNotFoundError: [Errno 2] No such file or directory: './gnnip/data/attack3_sh
 
 ### 1. Attack4-Watermark on Cora
 
-Run
-
-```
-
-python Defense.py
-
-```
-
 Follow the instructions to enter 5 and 1 in sequence
 
 ```
@@ -1226,14 +1126,6 @@ Watermark Graph - Accuracy: 0.14
 
 ### 2. Attack4-Watermark on Citeseer
 
-Run
-
-```
-
-python Defense.py
-
-```
-
 Follow the instructions to enter 5 and 2 in sequence
 
 ```
@@ -1281,14 +1173,6 @@ Watermark Graph - Accuracy: 0.2
 ```
 
 ### 3. Attack4-Watermark on PubMed
-
-Run
-
-```
-
-python Defense.py
-
-```
 
 Follow the instructions to enter 5 and 3 in sequence
 
@@ -1342,14 +1226,6 @@ FileNotFoundError: [Errno 2] No such file or directory: './gnnip/data/pubmed/tar
 
 ### 1. Attack5-Watermark on Cora
 
-Run
-
-```
-
-python Defense.py
-
-```
-
 Follow the instructions to enter 6 and 1 in sequence
 
 ```
@@ -1397,14 +1273,6 @@ Watermark Graph - Accuracy: 0.18
 
 ### 2. Attack5-Watermark on Citeseer
 
-Run
-
-```
-
-python Defense.py
-
-```
-
 Follow the instructions to enter 6 and 2 in sequence
 
 ```
@@ -1451,14 +1319,6 @@ Watermark Graph - Accuracy: 0.14
 ```
 
 ### 3. Attack5-Watermark on PubMed
-
-Run
-
-```
-
-python Defense.py
-
-```
 
 Follow the instructions to enter 6 and 3 in sequence
 
