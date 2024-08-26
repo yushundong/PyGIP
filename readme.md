@@ -33,7 +33,7 @@ Enter attack type (0-5): 0
   NumTestSamples: 1000
 Done loading data from cached files.
 =========Target Model Generating==========================
-100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 200/200 [00:01<00:00, 158.74it/s]
+100%|█████████████████| 200/200 [00:01<00:00, 158.74it/s]
 /Users/haihaosun/anaconda3/envs/gnnip/lib/python3.10/site-packages/dgl/heterograph.py:92: DGLWarning: Recommend creating graphs by `dgl.graph(data)` instead of `dgl.DGLGraph(data)`.
   dgl_warning(
 =========Model Extracting==========================
