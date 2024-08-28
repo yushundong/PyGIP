@@ -19,6 +19,14 @@ python3 examples/examples.py
 
 ## Model Extraction Attacks against Graph Neural Network
 
+### Example Python Code
+
+```python
+dataset = Cora()
+a = ModelExtractionAttack0(dataset, 0.25)
+a.attack()
+```
+
 ### Attack 0
 
 #### 1. Attack 0 on Cora
