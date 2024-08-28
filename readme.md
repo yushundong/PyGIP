@@ -436,16 +436,16 @@ python examples/defense.py
 
 ```python
 from gnnip.core_algo.Defense import Watermark_sage
-
-data_wm = WatermarkGraph(parameters).graph_wm # Create a random graph as watermark
-
-graph = dataset.merge_cora_and_datawm(dataset.graph, dataset.datawm) # Merge two graphs
-
-dataset_merge = graph_to_dataset(graph, 0.25, dataset.dataset_name) # Convert into dataset
-
-model = Watermark_sage(dataset_merge,0.25) # Create a watermark model as the target model
-
-model.watermark_attack(dataset_merge, attack_name, dataset_name) # Use the target model to defense against model extraction attack, where attack_name is the name of the attack model
+# Create a random graph as watermark
+data_wm = WatermarkGraph(parameters).graph_wm 
+# Merge two graphs
+graph = dataset.merge_cora_and_datawm(dataset.graph, dataset.datawm) 
+# Convert into dataset
+dataset_merge = graph_to_dataset(graph, 0.25, dataset.dataset_name) 
+# Create a watermark model as the target model
+model = Watermark_sage(dataset_merge,0.25) 
+# Use the target model to defense against model extraction attack, where attack_name is the name of the attack model
+model.watermark_attack(dataset_merge, attack_name, dataset_name) 
 ```
 
 ### Model Extraction Attacks against Graph Neural Network
@@ -580,8 +580,6 @@ Final results
 Non-Marked Acc: 0.2400, Marked Acc: 0.5640, Watermark Acc: 1.0000
 =========Target Model Generating==========================
 100%|█████████████████| 200/200 [00:07<00:00, 26.09it/s]
-/home/syx/.conda/envs/gnnip2/lib/python3.10/site-packages/dgl/heterograph.py:92: DGLWarning: Recommend creating graphs by `dgl.graph(data)` instead of `dgl.DGLGraph(data)`.
-dgl_warning(
 =========Model Extracting==========================
 100%|█████████████████| 200/200 [00:14<00:00, 13.71it/s]
 ========================Final results:=========================================
