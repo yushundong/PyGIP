@@ -911,7 +911,6 @@ class ModelExtractionAttack4(ModelExtractionAttack):
         sub_graph_train_mask_b = self.train_mask[sub_graph_index_b]
         sub_graph_test_mask_b = self.test_mask[sub_graph_index_b]
 
-        print(len(sub_graph_test_mask_b), len(sub_graph_test_mask_b))
         for i in range(len(sub_graph_test_mask_b)):
             if i >= 300:
                 sub_graph_train_mask_b[i] = 0
