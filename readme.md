@@ -23,8 +23,8 @@ python3 examples/examples.py
 
 ```python
 dataset = Cora()
-a = ModelExtractionAttack0(dataset, 0.25)
-a.attack()
+modelExtractionAttack = ModelExtractionAttack0(dataset, 0.25)
+modelExtractionAttack.attack()
 ```
 
 ### Attack 0
