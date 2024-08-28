@@ -8,7 +8,6 @@ export PYTHONPATH=`pwd`
 
 # Quick testing
 python3 examples/examples.py
-python examples/defense.py
 ```
 
 # Attack
@@ -427,7 +426,7 @@ FileNotFoundError: [Errno 2] No such file or directory: './gnnip/data/pubmed/tar
 # Defense
 
 ```
-python examples/defense.py
+python3 examples/examples.py
 ```
 
 ## Watermarking Graph Neural Networks By Random Graphs
