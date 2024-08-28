@@ -125,8 +125,6 @@ Enter attack type (0-5): 1
 Done loading data from cached files.
 =========Target Model Generating==========================
 100%|█████████████████| 200/200 [00:03<00:00, 66.00it/s]
-/Users/haihaosun/anaconda3/envs/gnnip/lib/python3.10/site-packages/dgl/heterograph.py:92: DGLWarning: Recommend creating graphs by `dgl.graph(data)` instead of `dgl.DGLGraph(data)`.
-  dgl_warning(
 Net_shadow(
   (layer1): GraphConv(in=3703, out=16, normalization=both, activation=None)
   (layer2): GraphConv(in=16, out=6, normalization=both, activation=None)
@@ -237,8 +235,6 @@ Done loading data from cached files.
 =========Target Model Generating==========================
 100%|█████████████████| 200/200 [00:01<00:00, 168.47it/s]
 generated_train_mask 1977
-/Users/haihaosun/anaconda3/envs/gnnip/lib/python3.10/site-packages/dgl/heterograph.py:92: DGLWarning: Recommend creating graphs by `dgl.graph(data)` instead of `dgl.DGLGraph(data)`.
-  dgl_warning(
   0%|                                                                                                                                                                                                                                                                                                                                          | 0/300 [00:00<?, ?it/s]/Users/haihaosun/Desktop/focusing/github/GNNIP/gnnip/core_algo/gnn_mea.py:766: UserWarning: indexing with dtype torch.uint8 is now deprecated, please use a dtype torch.bool instead. (Triggered internally at /Users/runner/work/pytorch/pytorch/pytorch/aten/src/ATen/native/IndexingUtils.h:28.)
   loss_a = F.nll_loss(logp_a[generated_train_mask],
 /Users/haihaosun/Desktop/focusing/github/GNNIP/gnnip/core_algo/gnn_mea.py:767: UserWarning: indexing with dtype torch.uint8 is now deprecated, please use a dtype torch.bool instead. (Triggered internally at /Users/runner/work/pytorch/pytorch/pytorch/aten/src/ATen/native/IndexingUtils.h:28.)
@@ -265,8 +261,6 @@ Done loading data from cached files.
 =========Target Model Generating==========================
 100%|█████████████████| 200/200 [00:03<00:00, 66.66it/s]
 generated_train_mask 1833
-/Users/haihaosun/anaconda3/envs/gnnip/lib/python3.10/site-packages/dgl/heterograph.py:92: DGLWarning: Recommend creating graphs by `dgl.graph(data)` instead of `dgl.DGLGraph(data)`.
-  dgl_warning(
 Traceback (most recent call last):
   File "/Users/haihaosun/Desktop/focusing/github/GNNIP/examples/examples.py", line 94, in <module>
     run_attack(attack_type, dataset_name)
