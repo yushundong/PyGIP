@@ -430,9 +430,29 @@ FileNotFoundError: [Errno 2] No such file or directory: './gnnip/data/pubmed/tar
 python examples/defense.py
 ```
 
-## Attack0-Watermark
+## Watermarking Graph Neural Networks By Random Graphs
 
-### 1. Attack0-Watermark on Cora
+### Example Python Code
+
+```python
+from gnnip.core_algo.Defense import Watermark_sage
+
+data_wm = WatermarkGraph(parameters).graph_wm # Create a random graph as watermark
+
+graph = dataset.merge_cora_and_datawm(dataset.graph, dataset.datawm) # Merge two graphs
+
+dataset_merge = graph_to_dataset(graph, 0.25, dataset.dataset_name) # Convert into dataset
+
+model = Watermark_sage(dataset_merge,0.25) # Create a watermark model as the target model
+
+model.watermark_attack(dataset_merge, attack_name, dataset_name) # Use the target model to defense against model extraction attack, where attack_name is the name of the attack model
+```
+
+### Model Extraction Attacks against Graph Neural Network
+
+#### Attack0-Watermark
+
+##### 1. Attack0-Watermark on Cora
 
 Follow the instructions to enter 1 and 1 in sequence
 
@@ -477,7 +497,7 @@ Fidelity: 0.8598356694055099, Accuracy: 0.7878202029966167
 Watermark Graph - Accuracy: 0.24
 ```
 
-### 2. Attack0-Watermark on Citeseer
+##### 2. Attack0-Watermark on Citeseer
 
 Follow the instructions to enter 1 and 2 in sequence
 
@@ -522,7 +542,7 @@ Fidelity: 0.8484011054086064, Accuracy: 0.7090406632451638
 Watermark Graph - Accuracy: 0.06
 ```
 
-### 3. Attack0-Watermark on PubMed
+##### 3. Attack0-Watermark on PubMed
 
 Follow the instructions to enter 1 and 3 in sequence
 
@@ -569,9 +589,9 @@ Fidelity: 0.9202077431539188, Accuracy: 0.7921219479293133
 Watermark Graph - Accuracy: 0.32
 ```
 
-## Attack1-Watermark
+#### Attack1-Watermark
 
-### 1. Attack1-Watermark on Cora
+##### 1. Attack1-Watermark on Cora
 
 Follow the instructions to enter 2 and 1 in sequence
 
@@ -619,7 +639,7 @@ Fidelity: 0.7750242954324587, Accuracy: 0.7769679300291545
 Watermark Graph - Accuracy: 0.12
 ```
 
-### 2. Attack1-Watermark on Citeseer
+##### 2. Attack1-Watermark on Citeseer
 
 Follow the instructions to enter 2 and 2 in sequence
 
@@ -667,7 +687,7 @@ Fidelity: 0.6955547254389242, Accuracy: 0.6936869630183041
 Watermark Graph - Accuracy: 0.18
 ```
 
-### 3. Attack1-Watermark on PubMed
+##### 3. Attack1-Watermark on PubMed
 
 Follow the instructions to enter 2 and 3 in sequence
 
@@ -715,9 +735,9 @@ Fidelity: 0.813971783710075, Accuracy: 0.8138668904389783
 Watermark Graph - Accuracy: 0.44
 ```
 
-## Attack2-Watermark
+#### Attack2-Watermark
 
-### 1. Attack2-Watermark on Cora
+##### 1. Attack2-Watermark on Cora
 
 Follow the instructions to enter 3 and 1 in sequence
 
@@ -760,7 +780,7 @@ Fidelity: 0.793, Accuracy: 0.758
 Watermark Graph - Accuracy: 0.1
 ```
 
-### 2. Attack2-Watermark on Citeseer
+##### 2. Attack2-Watermark on Citeseer
 
 Follow the instructions to enter 3 and 2 in sequence
 
@@ -803,7 +823,7 @@ Fidelity: 0.698, Accuracy: 0.587
 Watermark Graph - Accuracy: 0.22
 ```
 
-### 3. Attack3-Watermark on PubMed
+##### 3. Attack3-Watermark on PubMed
 
 Follow the instructions to enter 3 and 3 in sequence
 
@@ -846,9 +866,9 @@ Fidelity: 0.887, Accuracy: 0.782
 Watermark Graph - Accuracy: 0.34
 ```
 
-## Attack3-Watermark
+#### Attack3-Watermark
 
-### 1. Attack3-Watermark on Cora
+##### 1. Attack3-Watermark on Cora
 
 Follow the instructions to enter 4 and 1 in sequence
 
@@ -892,7 +912,7 @@ Fidelity: 0.7689274447949527, Accuracy: 0.8280757097791798
 Watermark Graph - Accuracy: 0.14
 ```
 
-### 2. Attack3-Watermark on Citeseer
+##### 2. Attack3-Watermark on Citeseer
 
 Follow the instructions to enter 4 and 2 in sequence
 
@@ -941,7 +961,7 @@ generated_train_mask[i] = 0
 IndexError: index 1846 is out of bounds for dimension 0 with size 1846
 ```
 
-### 3. Attack3-Watermark on PubMed
+##### 3. Attack3-Watermark on PubMed
 
 Follow the instructions to enter 4 and 3 in sequence
 
@@ -989,9 +1009,9 @@ fileObject = open('./gnnip/data/attack3_shadow_graph/' + self.dataset.dataset_na
 FileNotFoundError: [Errno 2] No such file or directory: './gnnip/data/attack3_shadow_graph/pubmed/target_graph_index.txt'
 ```
 
-## Attack4-Watermark
+#### Attack4-Watermark
 
-### 1. Attack4-Watermark on Cora
+##### 1. Attack4-Watermark on Cora
 
 Follow the instructions to enter 5 and 1 in sequence
 
@@ -1033,7 +1053,7 @@ Fidelity: 0.010830324909747292, Accuracy: 0.15433212996389892
 Watermark Graph - Accuracy: 0.14
 ```
 
-### 2. Attack4-Watermark on Citeseer
+##### 2. Attack4-Watermark on Citeseer
 
 Follow the instructions to enter 5 and 2 in sequence
 
@@ -1075,7 +1095,7 @@ Fidelity: 0.08691358024691358, Accuracy: 0.12493827160493827
 Watermark Graph - Accuracy: 0.2
 ```
 
-### 3. Attack4-Watermark on PubMed
+##### 3. Attack4-Watermark on PubMed
 
 Follow the instructions to enter 5 and 3 in sequence
 
@@ -1121,9 +1141,9 @@ fileObject = open('./gnnip/data/' + self.dataset.dataset_name +
 FileNotFoundError: [Errno 2] No such file or directory: './gnnip/data/pubmed/target_graph_index.txt'
 ```
 
-## Attack5-Watermark
+#### Attack5-Watermark
 
-### 1. Attack5-Watermark on Cora
+##### 1. Attack5-Watermark on Cora
 
 Follow the instructions to enter 6 and 1 in sequence
 
@@ -1164,7 +1184,7 @@ Fidelity: 0.20126353790613719, Accuracy: 0.13357400722021662
 Watermark Graph - Accuracy: 0.18
 ```
 
-### 2. Attack5-Watermark on Citeseer
+##### 2. Attack5-Watermark on Citeseer
 
 Follow the instructions to enter 6 and 2 in sequence
 
@@ -1205,7 +1225,7 @@ Fidelity: 0.15604938271604937, Accuracy: 0.19358024691358025
 Watermark Graph - Accuracy: 0.14
 ```
 
-### 3. Attack5-Watermark on PubMed
+##### 3. Attack5-Watermark on PubMed
 
 Follow the instructions to enter 6 and 3 in sequence
 
