@@ -425,16 +425,13 @@ FileNotFoundError: [Errno 2] No such file or directory: './gnnip/data/pubmed/tar
 
 # Defense
 
-```
-python3 examples/examples.py
-```
-
 ## Watermarking Graph Neural Networks By Random Graphs
 
 ### Example Python Code
 
 ```python
 from gnnip.core_algo.Defense import Watermark_sage
+
 # Create a random graph as watermark
 data_wm = WatermarkGraph(parameters).graph_wm 
 # Merge two graphs
@@ -445,6 +442,12 @@ dataset_merge = graph_to_dataset(graph, 0.25, dataset.dataset_name)
 model = Watermark_sage(dataset_merge,0.25) 
 # Use the target model to defense against model extraction attack, where attack_name is the name of the attack model
 model.watermark_attack(dataset_merge, attack_name, dataset_name) 
+```
+
+###
+
+```
+python3 examples/Watermarking_Graph_Neural_Networks_By_Random_Graphs.py
 ```
 
 ### Model Extraction Attacks against Graph Neural Network
