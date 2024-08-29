@@ -1,6 +1,5 @@
 from gnnip.datasets.datasets import *
 from gnnip.core_algo import *
-from gnnip.core_algo import *
 from gnnip.core_algo.Defense import Watermark_sage
 
 

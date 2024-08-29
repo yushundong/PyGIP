@@ -12,18 +12,31 @@ python3 examples/examples.py
 
 # Attack
 
-```bash
-python3 examples/examples.py
-```
-
 ## Model Extraction Attacks against Graph Neural Network
 
 ### Example Python Code
 
 ```python
+
+# Importing necessary classes and functions from the gnnip library.
+from gnnip.datasets.datasets import *  # Import all available datasets.
+from gnnip.core_algo import *  # Import all core algorithms.
+
+# Loading the Cora dataset, which is commonly used in graph neural network research.
 dataset = Cora()
+
+# Initializing a model extraction attack with the Cora dataset.
+# The second parameter (0.25) might represent the fraction of the data.
 modelExtractionAttack = ModelExtractionAttack0(dataset, 0.25)
+
+# Executing the attack on the model.
 modelExtractionAttack.attack()
+```
+
+### Example Usage
+
+```bash
+python3 examples/examples.py
 ```
 
 ### Attack 0
@@ -433,15 +446,15 @@ FileNotFoundError: [Errno 2] No such file or directory: './gnnip/data/pubmed/tar
 from gnnip.core_algo.Defense import Watermark_sage
 
 # Create a random graph as watermark
-data_wm = WatermarkGraph(parameters).graph_wm 
+data_wm = WatermarkGraph(parameters).graph_wm
 # Merge two graphs
-graph = dataset.merge_cora_and_datawm(dataset.graph, dataset.datawm) 
+graph = dataset.merge_cora_and_datawm(dataset.graph, dataset.datawm)
 # Convert into dataset
-dataset_merge = graph_to_dataset(graph, 0.25, dataset.dataset_name) 
+dataset_merge = graph_to_dataset(graph, 0.25, dataset.dataset_name)
 # Create a watermark model as the target model
-model = Watermark_sage(dataset_merge,0.25) 
+model = Watermark_sage(dataset_merge,0.25)
 # Use the target model to defense against model extraction attack, where attack_name is the name of the attack model
-model.watermark_attack(dataset_merge, attack_name, dataset_name) 
+model.watermark_attack(dataset_merge, attack_name, dataset_name)
 ```
 
 ###
