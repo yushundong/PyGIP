@@ -457,13 +457,13 @@ model = Watermark_sage(dataset_merge,0.25)
 model.watermark_attack(dataset_merge, attack_name, dataset_name)
 ```
 
-###
+### Run Watermarking_Graph_Neural_Networks_By_Random_Graphs.py
 
 ```
 python3 examples/Watermarking_Graph_Neural_Networks_By_Random_Graphs.py
 ```
 
-### Model Extraction Attacks against Graph Neural Network
+### Attack Model: Model Extraction Attacks against Graph Neural Network
 
 #### Attack0-Watermark
 
