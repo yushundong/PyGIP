@@ -446,17 +446,13 @@ FileNotFoundError: [Errno 2] No such file or directory: './gnnip/data/pubmed/tar
 ```python
 # Importing necessary classes and functions from the gnnip library.
 from gnnip.core_algo.Defense import Watermark_sage
+from gnnip.core_algo import *
 
-# Create a random graph as watermark
-data_wm = WatermarkGraph(parameters).graph_wm
-# Merge two graphs
-graph = dataset.merge_cora_and_datawm(dataset.graph, dataset.datawm)
-# Convert into dataset
-dataset_merge = graph_to_dataset(graph, 0.25, dataset.dataset_name)
-# Create a watermark model as the target model
-model = Watermark_sage(dataset_merge,0.25)
-# Use the target model to defense against model extraction attack, where attack_name is the name of the attack model
-model.watermark_attack(dataset_merge, attack_name, dataset_name)
+# Use dataset with a watermark graph to train a target model
+model = Watermark_sage(Cora(),0.25)
+# Choose Cora as dataset. The second parameter represents attack model and 1 is ModelExtractionAttack0. The third parameter represents dataset and 1 is Cora.
+# Use the target model to defense against model extraction attack and use the accuracy of the prediction of labels to distinguish whether the model is trained independently
+model.watermark_attack(Cora(), 1, 1)
 ```
 
 ### Example Usage
