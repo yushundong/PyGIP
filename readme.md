@@ -444,6 +444,7 @@ FileNotFoundError: [Errno 2] No such file or directory: './gnnip/data/pubmed/tar
 ### Example Python Code
 
 ```python
+# Importing necessary classes and functions from the gnnip library.
 from gnnip.core_algo.Defense import Watermark_sage
 
 # Create a random graph as watermark
@@ -458,7 +459,7 @@ model = Watermark_sage(dataset_merge,0.25)
 model.watermark_attack(dataset_merge, attack_name, dataset_name)
 ```
 
-### Run Watermarking_Graph_Neural_Networks_By_Random_Graphs.py
+### Example Usage
 
 ```
 python3 examples/Watermarking_Graph_Neural_Networks_By_Random_Graphs.py
