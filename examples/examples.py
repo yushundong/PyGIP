@@ -1,6 +1,6 @@
-from gnnip.datasets.datasets import *
-from gnnip.core_algo import *
-from gnnip.core_algo.Defense import Watermark_sage
+from GNNIP.datasets.datasets import *
+from GNNIP.core_algo import *
+from GNNIP.core_algo.Defense import Watermark_sage
 
 
 # dataset = Cora()
@@ -35,17 +35,37 @@ from gnnip.core_algo.Defense import Watermark_sage
 #     PubMed(), 0.25, './gnnip/models/attack_3_subgraph_shadow_model_pubmed_8063.pkl')
 # a.attack()
 
+dataset_mapping = {
+    "Cora": Cora,
+    "Citeseer": Citeseer,
+    "PubMed": PubMed,
+    "WiKi-CS": WikiCS,
+    "Flickr": FlickrData,
+    "Reddit": RedditData,
+    "Twitter": Twitter,
+    "MUTAG": MutaData,
+    "PTC": PTC,
+    "NCI1": NCI1,
+    "PROTEINS": PROTEINS,
+    "COLLAB": Collab,
+    "IMDB-BINARY": IMDB,
+    "Computers": Computer,
+    "Photo": Photo,
+    "Yelp": YelpData,
+}
 
-def run_attack(attack_type, dataset_name):
-    if dataset_name == "Cora":
-        dataset = Cora()
-    elif dataset_name == "Citeseer":
-        dataset = Citeseer()
-    elif dataset_name == "PubMed":
-        dataset = PubMed()
+def load_dataset(dataset_name):
+    dataset_class = dataset_mapping.get(dataset_name)
+    if dataset_class is not None:
+        dataset = dataset_class() 
+        return dataset
     else:
         print("Invalid dataset selected.")
-        return
+        return None
+
+def run_attack(attack_type, dataset_name):
+
+    dataset = load_dataset(dataset_name)
 
     switch = {
         0: lambda: ModelExtractionAttack0(dataset, 0.25),
@@ -90,7 +110,9 @@ def run_attack(attack_type, dataset_name):
 model_type = input("Enter model type (attack or defense): ").strip().lower()
 
 if model_type == "attack":
-    dataset_name = input("Enter dataset name (Cora, Citeseer, PubMed): ")
+    dataset_name = input("Enter dataset name (Cora, Citeseer, PubMed or more): ")
+    if dataset_name not in ["Cora", "Citeseer", "PubMed"]:
+        print("Currently, only attack 0 is supported for this dataset.")
     attack_type = int(input("Enter attack type (0-5): "))
     run_attack(attack_type, dataset_name)
 elif model_type == "defense":
