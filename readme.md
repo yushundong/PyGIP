@@ -105,6 +105,146 @@ Done loading data from cached files.
 Fidelity: 0.9076954287259941, Accuracy: 0.7790100081146876
 ```
 
+#### . Attack 0 on Flickr (Stuck somewhere)
+
+```
+Enter dataset name (Cora, Citeseer, PubMed or more): Flickr
+Currently, only attack 0 is supported for this dataset.
+Enter attack type (0-5): 0
+Downloading ./downloads/flickr.zip from https://data.dgl.ai/dataset/flickr.zip...
+./downloads/flickr.zip: 100%|████████████████████████████████████████████████████████████████████████████████████████| 25.7M/25.7M [00:17<00:00, 1.44MB/s]
+Extracting file to ./downloads/flickr_b05c56ca
+=========Target Model Generating==========================
+100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 200/200 [00:25<00:00,  7.91it/s]
+```
+
+#### . Attack 0 on WiKi-CS (Stuck somewhere)
+
+```
+Enter dataset name (Cora, Citeseer, PubMed or more): WiKi-CS
+Currently, only attack 0 is supported for this dataset.
+Enter attack type (0-5): 0
+=========Target Model Generating==========================
+100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 200/200 [00:08<00:00, 24.26it/s]
+```
+#### . Attack 0 on Reddit (Out of Memory)
+
+```
+Enter attack type (0-5): 0
+Downloading ./downloads/reddit.zip from https://data.dgl.ai/dataset/reddit.zip...
+./downloads/reddit.zip: 100%|███████████████████████████████████████████████████████████████████████████████████| 1.40G/1.40G [03:21<00:00, 6.94MB/s]
+Extracting file to ./downloads/reddit_69f818f5
+ =========Target Model Generating==========================
+100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████| 200/200 [29:23<00:00,  8.82s/it]
+Killed: 9
+(gnnip) Kevins-MacBook-Pro:GNNIP kevinshuey$  /opt/homebrew/Caskroom/miniconda/base/envs/gnnip/lib/python3.10/multiprocessing/resource_tracker.py:224: UserWarning: resource_tracker: There appear to be 1 leaked semaphor
+```
+
+#### . Attack 0 on PTC
+
+```
+Enter dataset name (Cora, Citeseer, PubMed or more): PTC
+Currently, only attack 0 is supported for this dataset.
+Enter attack type (0-5): 0
+Downloading ./downloads/GINDataset.zip from https://raw.githubusercontent.com/weihua916/powerful-gnns/master/dataset.zip...
+./downloads/GINDataset.zip: 100%|████████████████████████████████████████████████████████████████████████████████████| 33.4M/33.4M [00:27<00:00, 1.21MB/s]
+Extracting file to ./downloads/GINDataset
+=========Target Model Generating==========================
+100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 200/200 [00:00<00:00, 641.49it/s]
+/opt/homebrew/Caskroom/miniconda/base/envs/gnnip/lib/python3.10/site-packages/dgl/heterograph.py:92: DGLWarning: Recommend creating graphs by `dgl.graph(data)` instead of `dgl.DGLGraph(data)`.
+  dgl_warning(
+=========Model Extracting==========================
+100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 200/200 [00:00<00:00, 287.41it/s]
+========================Final results:=========================================
+Fidelity: 0.9042553191489362, Accuracy: 0.8617021276595744
+```
+
+#### . Attack 0 on NCI1
+
+```
+Enter dataset name (Cora, Citeseer, PubMed or more): NCI1
+Currently, only attack 0 is supported for this dataset.
+Enter attack type (0-5): 0
+
+=========Target Model Generating==========================
+100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 200/200 [00:00<00:00, 588.27it/s]
+/opt/homebrew/Caskroom/miniconda/base/envs/gnnip/lib/python3.10/site-packages/dgl/heterograph.py:92: DGLWarning: Recommend creating graphs by `dgl.graph(data)` instead of `dgl.DGLGraph(data)`.
+  dgl_warning(
+=========Model Extracting==========================
+100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 200/200 [00:00<00:00, 235.10it/s]
+========================Final results:=========================================
+Fidelity: 0.951310861423221, Accuracy: 0.9138576779026217
+```
+
+#### . Attack 0 on PROTEINS
+
+```
+Enter dataset name (Cora, Citeseer, PubMed or more): PROTEINS
+Currently, only attack 0 is supported for this dataset.
+Enter attack type (0-5): 0
+=========Target Model Generating==========================
+100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 200/200 [00:00<00:00, 604.61it/s]
+/opt/homebrew/Caskroom/miniconda/base/envs/gnnip/lib/python3.10/site-packages/dgl/heterograph.py:92: DGLWarning: Recommend creating graphs by `dgl.graph(data)` instead of `dgl.DGLGraph(data)`.
+  dgl_warning(
+=========Model Extracting==========================
+100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 200/200 [00:00<00:00, 244.43it/s]
+========================Final results:=========================================
+Fidelity: 0.9914893617021276, Accuracy: 0.8822695035460993
+```
+
+#### . Attack 0 on IMDB-BINARY
+
+```
+Enter dataset name (Cora, Citeseer, PubMed or more): COLLAB
+Currently, only attack 0 is supported for this dataset.
+Enter attack type (0-5): 0
+=========Target Model Generating==========================
+100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 200/200 [00:00<00:00, 485.52it/s]
+/opt/homebrew/Caskroom/miniconda/base/envs/gnnip/lib/python3.10/site-packages/dgl/heterograph.py:92: DGLWarning: Recommend creating graphs by `dgl.graph(data)` instead of `dgl.DGLGraph(data)`.
+  dgl_warning(
+=========Model Extracting==========================
+100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 200/200 [00:00<00:00, 214.98it/s]
+========================Final results:=========================================
+Fidelity: 1.0, Accuracy: 1.0
+```
+
+#### . Attack 0 on Computers (Stuck somewhere)
+
+```
+Enter dataset name (Cora, Citeseer, PubMed or more): Computers
+Currently, only attack 0 is supported for this dataset.
+Enter attack type (0-5): 0
+Downloading ./downloads/amazon_co_buy_computer.zip from https://data.dgl.ai/dataset/amazon_co_buy_computer.zip...
+./downloads/amazon_co_buy_computer.zip: 100%|████████████████████████████████████████████████████████████████████████| 3.42M/3.42M [00:01<00:00, 1.81MB/s]
+Extracting file to ./downloads/amazon_co_buy_computer_b5999b2e
+=========Target Model Generating==========================
+100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 200/200 [00:08<00:00, 22.39it/s]
+```
+
+#### . Attack 0 on Photos (Stuck somewhere)
+
+```
+Enter dataset name (Cora, Citeseer, PubMed or more): Photo
+Currently, only attack 0 is supported for this dataset.
+Enter attack type (0-5): 0
+Downloading ./downloads/amazon_co_buy_photo.zip from https://data.dgl.ai/dataset/amazon_co_buy_photo.zip...
+./downloads/amazon_co_buy_photo.zip: 100%|███████████████████████████████████████████████████████████████████████████| 1.78M/1.78M [00:01<00:00, 1.22MB/s]
+Extracting file to ./downloads/amazon_co_buy_photo_b75d805d
+=========Target Model Generating==========================
+100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 200/200 [00:04<00:00, 43.96it/s]
+
+```
+
+#### . Attack 0 on Yelp (Such a large dataset)
+
+```
+Enter dataset name (Cora, Citeseer, PubMed or more): Yelp    
+Currently, only attack 0 is supported for this dataset.
+Enter attack type (0-5): 0
+Downloading ./downloads/yelp.zip from https://data.dgl.ai/dataset/yelp.zip...
+./downloads/yelp.zip:  32%|████████████████████████████▋                                                              | 311M/987M [09:14<1:11:11, 158kB/s]
+```
+
 ### Attack 1
 
 #### 1. Attack 1 on Cora
