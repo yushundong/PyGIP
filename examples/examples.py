@@ -38,9 +38,13 @@ from GNNIP.core_algo.Defense import Watermark_sage
 dataset_mapping = {
     "Cora": Cora,
     "Citeseer": Citeseer,
+    "DBLP": DBLPdata, 
     "PubMed": PubMed,
     "WiKi-CS": WikiCS,
+    "Facebook": FacebookData, 
+    "LastFM": LastFMdata,
     "Flickr": FlickrData,
+    "Ploblogs": PolblogsData,
     "Reddit": RedditData,
     "Twitter": Twitter,
     "MUTAG": MutaData,

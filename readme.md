@@ -84,7 +84,22 @@ Done loading data from cached files.
 Fidelity: 0.7784455128205128, Accuracy: 0.6778846153846154
 ```
 
-#### 3. Attack 0 on PubMed
+#### . Attack 0 on DBLP 
+```
+Enter dataset name (Cora, Citeseer, PubMed or more): DBLP
+Currently, only attack 0 is supported for this dataset.
+Enter attack type (0-5): 0
+=========Target Model Generating==========================
+100%|█████████████████████████████████████████████████████████████████████| 200/200 [00:00<00:00, 281.01it/s]
+/opt/homebrew/Caskroom/miniconda/base/envs/gnnip/lib/python3.10/site-packages/dgl/heterograph.py:92: DGLWarning: Recommend creating graphs by `dgl.graph(data)` instead of `dgl.DGLGraph(data)`.
+  dgl_warning(
+=========Model Extracting==========================
+100%|█████████████████████████████████████████████████████████████████████| 200/200 [00:01<00:00, 135.48it/s]
+========================Final results:=========================================
+Fidelity: 0.2763720013144923, Accuracy: 0.29477489319750244
+```
+
+#### . Attack 0 on PubMed
 
 ```
 Enter dataset name (Cora, Citeseer, PubMed): PubMed
@@ -127,6 +142,51 @@ Enter attack type (0-5): 0
 =========Target Model Generating==========================
 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 200/200 [00:08<00:00, 24.26it/s]
 ```
+
+#### . Attack 0 on Facebook (Stuck somewhere)
+```
+Enter dataset name (Cora, Citeseer, PubMed or more): Facebook
+Currently, only attack 0 is supported for this dataset.
+Enter attack type (0-5): 0
+Graph: Graph(num_nodes=22470, num_edges=342004,
+      ndata_schemes={}
+      edata_schemes={})
+Graph nodes: 22470
+Graph edges: 342004
+Node feature shape: torch.Size([22470, 128])
+Node label shape: torch.Size([22470])
+Train mask shape: torch.Size([22470])
+Test mask shape: torch.Size([22470])
+=========Target Model Generating==========================
+100%|████████████████████████| 200/200 [00:04<00:00, 44.61it/s]
+
+```
+
+#### . Attack 0 on Polblogs (Stuck somewhere)
+```
+Enter dataset name (Cora, Citeseer, PubMed or more): Ploblogs
+Currently, only attack 0 is supported for this dataset.
+Enter attack type (0-5): 0
+Downloading https://netset.telecom-paris.fr/datasets/polblogs.tar.gz
+Extracting downloads/raw/polblogs.tar.gz
+=========Target Model Generating==========================
+100%|█████████████████████████████████████████████████████████| 200/200 [00:04<00:00, 45.02it/s]
+
+```
+
+#### . Attack 0 on LastFM (Stuck somewhere)
+```
+Enter dataset name (Cora, Citeseer, PubMed or more): LastFM
+Currently, only attack 0 is supported for this dataset.
+Enter attack type (0-5): 0
+Downloading https://graphmining.ai/datasets/ptg/lastfm_asia.npz
+=========Target Model Generating==========================
+100%|█████████████████████████████████████████████████████████| 200/200 [00:04<00:00, 45.51it/s]
+
+```
+
+
+
 #### . Attack 0 on Reddit (Out of Memory)
 
 ```
