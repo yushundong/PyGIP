@@ -1,6 +1,11 @@
 ```bash
 # pip install
-
+conda create -n pygip python=3.10.14
+conda activate pygip
+# if you use cuda 11.x
+pip install pygip -f https://data.dgl.ai/wheels/torch-2.3/cu118/repo.html --extra-index-url https://download.pytorch.org/whl/cu118
+# if you use cuda 12.x
+# pip install pygip -f https://data.dgl.ai/wheels/torch-2.3/cu121/repo.html --extra-index-url https://data.dgl.ai/wheels/torch-2.3/cu121/repo.html
 ```
 
 
