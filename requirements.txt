@@ -1,0 +1,45 @@
+# bzip2==1.0.8
+# ca-certificates==2024.7.2
+# libffi==3.4.4
+# ncurses==6.4
+# openssl==3.0.14
+# pip==24.0
+# python==3.10.14
+# readline==8.2
+# setuptools==69.5.1
+# sqlite==3.45.3
+# tk==8.6.14
+# wheel==0.43.0
+# xz==5.4.6
+# zlib==1.2.13
+torch==2.3.0
+annotated-types==0.7.0
+certifi==2024.7.4
+charset-normalizer==3.3.2
+filelock==3.15.4
+fsspec==2024.6.1
+idna==3.7
+jinja2==3.1.4
+markupsafe==2.1.5
+mpmath==1.3.0
+networkx==3.3
+numpy==2.0.1
+pandas==2.2.2
+psutil==6.0.0
+pydantic==2.8.2
+pydantic-core==2.20.1
+python-dateutil==2.9.0.post0
+pytz==2024.1
+pyyaml==6.0.1
+requests==2.32.3
+scipy==1.14.0
+six==1.16.0
+sympy==1.13.1
+torchdata==0.7.1
+tqdm==4.66.4
+typing-extensions==4.12.2
+tzdata==2024.1
+urllib3==2.2.2
+dgl==2.2.1
+torch_geometric
+packaging

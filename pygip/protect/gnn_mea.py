@@ -1,4 +1,4 @@
-from gnnip.datasets import *
+from pygip.datasets import *
 import networkx as nx
 import numpy as np
 import torch as th
@@ -615,7 +615,7 @@ class ModelExtractionAttack3(ModelExtractionAttack):
 
         # sample nodes
         sub_graph_index_b = []
-        fileObject = open('./gnnip/data/attack3_shadow_graph/' + self.dataset.dataset_name +
+        fileObject = open('./pygip/data/attack3_shadow_graph/' + self.dataset.dataset_name +
                           '/target_graph_index.txt', 'r')
         contents = fileObject.readlines()
         for ip in contents:
@@ -623,7 +623,7 @@ class ModelExtractionAttack3(ModelExtractionAttack):
         fileObject.close()
 
         sub_graph_index_a = []
-        fileObject = open('./gnnip/data/attack3_shadow_graph/' + self.dataset.dataset_name +
+        fileObject = open('./pygip/data/attack3_shadow_graph/' + self.dataset.dataset_name +
                           '/protential_1300_shadow_graph_index.txt', 'r')
         contents = fileObject.readlines()
         for ip in contents:
@@ -797,7 +797,7 @@ class ModelExtractionAttack4(ModelExtractionAttack):
 
         # sample nodes
         sub_graph_index_b = []
-        fileObject = open('./gnnip/data/' + self.dataset.dataset_name +
+        fileObject = open('./pygip/data/' + self.dataset.dataset_name +
                           '/target_graph_index.txt', 'r')
         contents = fileObject.readlines()
         for ip in contents:
@@ -805,7 +805,7 @@ class ModelExtractionAttack4(ModelExtractionAttack):
         fileObject.close()
 
         sub_graph_index_a = []
-        fileObject = open('./gnnip/data/' + self.dataset.dataset_name +
+        fileObject = open('./pygip/data/' + self.dataset.dataset_name +
                           '/protential_1200_shadow_graph_index.txt', 'r')
         contents = fileObject.readlines()
         for ip in contents:
@@ -993,7 +993,7 @@ class ModelExtractionAttack5(ModelExtractionAttack):
         g_numpy = self.graph.adjacency_matrix().to_dense().numpy()
 
         sub_graph_index_b = []
-        fileObject = open('./gnnip/data/' + self.dataset.dataset_name +
+        fileObject = open('./pygip/data/' + self.dataset.dataset_name +
                           '/target_graph_index.txt', 'r')
         contents = fileObject.readlines()
         for ip in contents:
@@ -1001,7 +1001,7 @@ class ModelExtractionAttack5(ModelExtractionAttack):
         fileObject.close()
 
         sub_graph_index_a = []
-        fileObject = open('./gnnip/data/' + self.dataset.dataset_name +
+        fileObject = open('./pygip/data/' + self.dataset.dataset_name +
                           '/protential_1200_shadow_graph_index.txt', 'r')
         contents = fileObject.readlines()
         for ip in contents:

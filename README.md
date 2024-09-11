@@ -1,7 +1,13 @@
 ```bash
+# pip install
+
+```
+
+
+```bash
 # Simple setup.
-conda env create -f environment.yml -n gnnip
-conda activate gnnip
+conda env create -f environment.yml -n pygip
+conda activate pygip
 pip install dgl -f https://data.dgl.ai/wheels/repo.html #due to dgl issues, unfortunately we have to install this dgl 2.2.1 manually.
 
 # Under the GNNIP directory
@@ -19,9 +25,9 @@ python3 examples/examples.py
 
 ```python
 
-# Importing necessary classes and functions from the gnnip library.
-from gnnip.datasets.datasets import *  # Import all available datasets.
-from gnnip.core_algo import *  # Import all core algorithms.
+# Importing necessary classes and functions from the pygip library.
+from pygip.datasets.datasets import *  # Import all available datasets.
+from pygip.protect import *  # Import all core algorithms.
 
 # Loading the Cora dataset, which is commonly used in graph neural network research.
 dataset = Cora()
@@ -91,7 +97,7 @@ Currently, only attack 0 is supported for this dataset.
 Enter attack type (0-5): 0
 =========Target Model Generating==========================
 100%|█████████████████████████████████████████████████████████████████████| 200/200 [00:00<00:00, 281.01it/s]
-/opt/homebrew/Caskroom/miniconda/base/envs/gnnip/lib/python3.10/site-packages/dgl/heterograph.py:92: DGLWarning: Recommend creating graphs by `dgl.graph(data)` instead of `dgl.DGLGraph(data)`.
+/opt/homebrew/Caskroom/miniconda/base/envs/pygip/lib/python3.10/site-packages/dgl/heterograph.py:92: DGLWarning: Recommend creating graphs by `dgl.graph(data)` instead of `dgl.DGLGraph(data)`.
   dgl_warning(
 =========Model Extracting==========================
 100%|█████████████████████████████████████████████████████████████████████| 200/200 [00:01<00:00, 135.48it/s]
@@ -197,7 +203,7 @@ Extracting file to ./downloads/reddit_69f818f5
  =========Target Model Generating==========================
 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████| 200/200 [29:23<00:00,  8.82s/it]
 Killed: 9
-(gnnip) Kevins-MacBook-Pro:GNNIP kevinshuey$  /opt/homebrew/Caskroom/miniconda/base/envs/gnnip/lib/python3.10/multiprocessing/resource_tracker.py:224: UserWarning: resource_tracker: There appear to be 1 leaked semaphor
+(pygip) Kevins-MacBook-Pro:GNNIP kevinshuey$  /opt/homebrew/Caskroom/miniconda/base/envs/pygip/lib/python3.10/multiprocessing/resource_tracker.py:224: UserWarning: resource_tracker: There appear to be 1 leaked semaphor
 ```
 
 #### . Attack 0 on PTC
@@ -211,7 +217,7 @@ Downloading ./downloads/GINDataset.zip from https://raw.githubusercontent.com/we
 Extracting file to ./downloads/GINDataset
 =========Target Model Generating==========================
 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 200/200 [00:00<00:00, 641.49it/s]
-/opt/homebrew/Caskroom/miniconda/base/envs/gnnip/lib/python3.10/site-packages/dgl/heterograph.py:92: DGLWarning: Recommend creating graphs by `dgl.graph(data)` instead of `dgl.DGLGraph(data)`.
+/opt/homebrew/Caskroom/miniconda/base/envs/pygip/lib/python3.10/site-packages/dgl/heterograph.py:92: DGLWarning: Recommend creating graphs by `dgl.graph(data)` instead of `dgl.DGLGraph(data)`.
   dgl_warning(
 =========Model Extracting==========================
 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 200/200 [00:00<00:00, 287.41it/s]
@@ -228,7 +234,7 @@ Enter attack type (0-5): 0
 
 =========Target Model Generating==========================
 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 200/200 [00:00<00:00, 588.27it/s]
-/opt/homebrew/Caskroom/miniconda/base/envs/gnnip/lib/python3.10/site-packages/dgl/heterograph.py:92: DGLWarning: Recommend creating graphs by `dgl.graph(data)` instead of `dgl.DGLGraph(data)`.
+/opt/homebrew/Caskroom/miniconda/base/envs/pygip/lib/python3.10/site-packages/dgl/heterograph.py:92: DGLWarning: Recommend creating graphs by `dgl.graph(data)` instead of `dgl.DGLGraph(data)`.
   dgl_warning(
 =========Model Extracting==========================
 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 200/200 [00:00<00:00, 235.10it/s]
@@ -244,7 +250,7 @@ Currently, only attack 0 is supported for this dataset.
 Enter attack type (0-5): 0
 =========Target Model Generating==========================
 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 200/200 [00:00<00:00, 604.61it/s]
-/opt/homebrew/Caskroom/miniconda/base/envs/gnnip/lib/python3.10/site-packages/dgl/heterograph.py:92: DGLWarning: Recommend creating graphs by `dgl.graph(data)` instead of `dgl.DGLGraph(data)`.
+/opt/homebrew/Caskroom/miniconda/base/envs/pygip/lib/python3.10/site-packages/dgl/heterograph.py:92: DGLWarning: Recommend creating graphs by `dgl.graph(data)` instead of `dgl.DGLGraph(data)`.
   dgl_warning(
 =========Model Extracting==========================
 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 200/200 [00:00<00:00, 244.43it/s]
@@ -260,7 +266,7 @@ Currently, only attack 0 is supported for this dataset.
 Enter attack type (0-5): 0
 =========Target Model Generating==========================
 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 200/200 [00:00<00:00, 485.52it/s]
-/opt/homebrew/Caskroom/miniconda/base/envs/gnnip/lib/python3.10/site-packages/dgl/heterograph.py:92: DGLWarning: Recommend creating graphs by `dgl.graph(data)` instead of `dgl.DGLGraph(data)`.
+/opt/homebrew/Caskroom/miniconda/base/envs/pygip/lib/python3.10/site-packages/dgl/heterograph.py:92: DGLWarning: Recommend creating graphs by `dgl.graph(data)` instead of `dgl.DGLGraph(data)`.
   dgl_warning(
 =========Model Extracting==========================
 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 200/200 [00:00<00:00, 214.98it/s]
@@ -456,11 +462,11 @@ Done loading data from cached files.
 =========Target Model Generating==========================
 100%|█████████████████| 200/200 [00:01<00:00, 168.47it/s]
 generated_train_mask 1977
-  0%|                                                                                                                                                                                                                                                                                                                                          | 0/300 [00:00<?, ?it/s]/Users/haihaosun/Desktop/focusing/github/GNNIP/gnnip/core_algo/gnn_mea.py:766: UserWarning: indexing with dtype torch.uint8 is now deprecated, please use a dtype torch.bool instead. (Triggered internally at /Users/runner/work/pytorch/pytorch/pytorch/aten/src/ATen/native/IndexingUtils.h:28.)
+  0%|                                                                                                                                                                                                                                                                                                                                          | 0/300 [00:00<?, ?it/s]/Users/haihaosun/Desktop/focusing/github/GNNIP/pygip/protect/gnn_mea.py:766: UserWarning: indexing with dtype torch.uint8 is now deprecated, please use a dtype torch.bool instead. (Triggered internally at /Users/runner/work/pytorch/pytorch/pytorch/aten/src/ATen/native/IndexingUtils.h:28.)
   loss_a = F.nll_loss(logp_a[generated_train_mask],
-/Users/haihaosun/Desktop/focusing/github/GNNIP/gnnip/core_algo/gnn_mea.py:767: UserWarning: indexing with dtype torch.uint8 is now deprecated, please use a dtype torch.bool instead. (Triggered internally at /Users/runner/work/pytorch/pytorch/pytorch/aten/src/ATen/native/IndexingUtils.h:28.)
+/Users/haihaosun/Desktop/focusing/github/GNNIP/pygip/protect/gnn_mea.py:767: UserWarning: indexing with dtype torch.uint8 is now deprecated, please use a dtype torch.bool instead. (Triggered internally at /Users/runner/work/pytorch/pytorch/pytorch/aten/src/ATen/native/IndexingUtils.h:28.)
   generated_labels[generated_train_mask])
-/Users/haihaosun/anaconda3/envs/gnnip/lib/python3.10/site-packages/torch/autograd/graph.py:744: UserWarning: indexing with dtype torch.uint8 is now deprecated, please use a dtype torch.bool instead. (Triggered internally at /Users/runner/work/pytorch/pytorch/pytorch/aten/src/ATen/native/IndexingUtils.h:28.)
+/Users/haihaosun/anaconda3/envs/pygip/lib/python3.10/site-packages/torch/autograd/graph.py:744: UserWarning: indexing with dtype torch.uint8 is now deprecated, please use a dtype torch.bool instead. (Triggered internally at /Users/runner/work/pytorch/pytorch/pytorch/aten/src/ATen/native/IndexingUtils.h:28.)
   return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
 100%|█████████████████| 300/300 [00:02<00:00, 106.61it/s]
 Fidelity: 0.7894321766561514, Accuracy: 0.8154574132492114
@@ -487,7 +493,7 @@ Traceback (most recent call last):
     run_attack(attack_type, dataset_name)
   File "/Users/haihaosun/Desktop/focusing/github/GNNIP/examples/examples.py", line 85, in run_attack
     a.attack()
-  File "/Users/haihaosun/Desktop/focusing/github/GNNIP/gnnip/core_algo/gnn_mea.py", line 704, in attack
+  File "/Users/haihaosun/Desktop/focusing/github/GNNIP/pygip/protect/gnn_mea.py", line 704, in attack
     generated_train_mask[i] = 0
 IndexError: index 1833 is out of bounds for dimension 0 with size 1833
 
@@ -514,9 +520,9 @@ Traceback (most recent call last):
     run_attack(attack_type, dataset_name)
   File "/Users/haihaosun/Desktop/focusing/github/GNNIP/examples/examples.py", line 85, in run_attack
     a.attack()
-  File "/Users/haihaosun/Desktop/focusing/github/GNNIP/gnnip/core_algo/gnn_mea.py", line 618, in attack
-    fileObject = open('./gnnip/data/attack3_shadow_graph/' + self.dataset.dataset_name +
-FileNotFoundError: [Errno 2] No such file or directory: './gnnip/data/attack3_shadow_graph/pubmed/target_graph_index.txt'
+  File "/Users/haihaosun/Desktop/focusing/github/GNNIP/pygip/protect/gnn_mea.py", line 618, in attack
+    fileObject = open('./pygip/data/attack3_shadow_graph/' + self.dataset.dataset_name +
+FileNotFoundError: [Errno 2] No such file or directory: './pygip/data/attack3_shadow_graph/pubmed/target_graph_index.txt'
 ```
 
 ### Attack 4
@@ -573,9 +579,9 @@ Traceback (most recent call last):
     run_attack(attack_type, dataset_name)
   File "/Users/haihaosun/Desktop/focusing/github/GNNIP/examples/examples.py", line 85, in run_attack
     a.attack()
-  File "/Users/haihaosun/Desktop/focusing/github/GNNIP/gnnip/core_algo/gnn_mea.py", line 800, in attack
-    fileObject = open('./gnnip/data/' + self.dataset.dataset_name +
-FileNotFoundError: [Errno 2] No such file or directory: './gnnip/data/pubmed/target_graph_index.txt'
+  File "/Users/haihaosun/Desktop/focusing/github/GNNIP/pygip/protect/gnn_mea.py", line 800, in attack
+    fileObject = open('./pygip/data/' + self.dataset.dataset_name +
+FileNotFoundError: [Errno 2] No such file or directory: './pygip/data/pubmed/target_graph_index.txt'
 ```
 
 ### Attack 5
@@ -632,9 +638,9 @@ Traceback (most recent call last):
     run_attack(attack_type, dataset_name)
   File "/Users/haihaosun/Desktop/focusing/github/GNNIP/examples/examples.py", line 85, in run_attack
     a.attack()
-  File "/Users/haihaosun/Desktop/focusing/github/GNNIP/gnnip/core_algo/gnn_mea.py", line 997, in attack
-    fileObject = open('./gnnip/data/' + self.dataset.dataset_name +
-FileNotFoundError: [Errno 2] No such file or directory: './gnnip/data/pubmed/target_graph_index.txt'
+  File "/Users/haihaosun/Desktop/focusing/github/GNNIP/pygip/protect/gnn_mea.py", line 997, in attack
+    fileObject = open('./pygip/data/' + self.dataset.dataset_name +
+FileNotFoundError: [Errno 2] No such file or directory: './pygip/data/pubmed/target_graph_index.txt'
 ```
 
 # Defense
@@ -644,9 +650,9 @@ FileNotFoundError: [Errno 2] No such file or directory: './gnnip/data/pubmed/tar
 ### Example Python Code
 
 ```python
-# Importing necessary classes and functions from the gnnip library.
-from gnnip.core_algo.Defense import Watermark_sage
-from gnnip.core_algo import *
+# Importing necessary classes and functions from the pygip library.
+from pygip.protect.Defense import Watermark_sage
+from pygip.protect import *
 
 # Use dataset with a watermark graph to train a target model
 model = Watermark_sage(Cora(),0.25)
@@ -1163,11 +1169,11 @@ Non-Marked Acc: 0.1400, Marked Acc: 0.3450, Watermark Acc: 0.9600
 100%|█████████████████| 200/200 [00:11<00:00, 17.85it/s]
 generated_train_mask 1846
 Traceback (most recent call last):
-File "/mnt/g/Final_Edition/GNNIP-main/GNNIP/core_algo/Defense.py", line 444, in <module>
+File "/mnt/g/Final_Edition/GNNIP-main/GNNIP/protect/Defense.py", line 444, in <module>
 defense.watermark_attack(Citeseer(), attack_name, dataset_name)
-File "/mnt/g/Final_Edition/GNNIP-main/GNNIP/core_algo/Defense.py", line 268, in watermark_attack
+File "/mnt/g/Final_Edition/GNNIP-main/GNNIP/protect/Defense.py", line 268, in watermark_attack
 attack.attack()
-File "/mnt/g/Final_Edition/GNNIP-main/GNNIP/core_algo/gnn_mea.py", line 704, in attack
+File "/mnt/g/Final_Edition/GNNIP-main/GNNIP/protect/gnn_mea.py", line 704, in attack
 generated_train_mask[i] = 0
 IndexError: index 1846 is out of bounds for dimension 0 with size 1846
 ```
@@ -1211,13 +1217,13 @@ Non-Marked Acc: 0.4200, Marked Acc: 0.6750, Watermark Acc: 1.0000
 =========Target Model Generating==========================
 100%|█████████████████| 200/200 [00:07<00:00, 26.74it/s]
 Traceback (most recent call last):
-File "/mnt/g/Final_Edition/GNNIP-main/GNNIP/core_algo/Defense.py", line 447, in <module>
+File "/mnt/g/Final_Edition/GNNIP-main/GNNIP/protect/Defense.py", line 447, in <module>
 defense.watermark_attack(PubMed(), attack_name, dataset_name)
-File "/mnt/g/Final_Edition/GNNIP-main/GNNIP/core_algo/Defense.py", line 302, in watermark_attack
+File "/mnt/g/Final_Edition/GNNIP-main/GNNIP/protect/Defense.py", line 302, in watermark_attack
 attack.attack()
-File "/mnt/g/Final_Edition/GNNIP-main/GNNIP/core_algo/gnn_mea.py", line 618, in attack
-fileObject = open('./gnnip/data/attack3_shadow_graph/' + self.dataset.dataset_name +
-FileNotFoundError: [Errno 2] No such file or directory: './gnnip/data/attack3_shadow_graph/pubmed/target_graph_index.txt'
+File "/mnt/g/Final_Edition/GNNIP-main/GNNIP/protect/gnn_mea.py", line 618, in attack
+fileObject = open('./pygip/data/attack3_shadow_graph/' + self.dataset.dataset_name +
+FileNotFoundError: [Errno 2] No such file or directory: './pygip/data/attack3_shadow_graph/pubmed/target_graph_index.txt'
 ```
 
 #### Attack4-Watermark
@@ -1343,13 +1349,13 @@ Marked Acc: 0.7730
 Final results
 Non-Marked Acc: 0.3600, Marked Acc: 0.5980, Watermark Acc: 1.0000
 Traceback (most recent call last):
-File "/mnt/g/Final_Edition/GNNIP-main/GNNIP/core_algo/Defense.py", line 447, in <module>
+File "/mnt/g/Final_Edition/GNNIP-main/GNNIP/protect/Defense.py", line 447, in <module>
 defense.watermark_attack(PubMed(), attack_name, dataset_name)
-File "/mnt/g/Final_Edition/GNNIP-main/GNNIP/core_algo/Defense.py", line 307, in watermark_attack
+File "/mnt/g/Final_Edition/GNNIP-main/GNNIP/protect/Defense.py", line 307, in watermark_attack
 attack.attack()
-File "/mnt/g/Final_Edition/GNNIP-main/GNNIP/core_algo/gnn_mea.py", line 800, in attack
-fileObject = open('./gnnip/data/' + self.dataset.dataset_name +
-FileNotFoundError: [Errno 2] No such file or directory: './gnnip/data/pubmed/target_graph_index.txt'
+File "/mnt/g/Final_Edition/GNNIP-main/GNNIP/protect/gnn_mea.py", line 800, in attack
+fileObject = open('./pygip/data/' + self.dataset.dataset_name +
+FileNotFoundError: [Errno 2] No such file or directory: './pygip/data/pubmed/target_graph_index.txt'
 ```
 
 #### Attack5-Watermark
@@ -1473,11 +1479,11 @@ Marked Acc: 0.7730
 Final results
 Non-Marked Acc: 0.3200, Marked Acc: 0.7020, Watermark Acc: 1.0000
 Traceback (most recent call last):
-File "/mnt/g/Final_Edition/GNNIP-main/GNNIP/core_algo/Defense.py", line 447, in <module>
+File "/mnt/g/Final_Edition/GNNIP-main/GNNIP/protect/Defense.py", line 447, in <module>
 defense.watermark_attack(PubMed(), attack_name, dataset_name)
-File "/mnt/g/Final_Edition/GNNIP-main/GNNIP/core_algo/Defense.py", line 313, in watermark_attack
+File "/mnt/g/Final_Edition/GNNIP-main/GNNIP/protect/Defense.py", line 313, in watermark_attack
 attack.attack()
-File "/mnt/g/Final_Edition/GNNIP-main/GNNIP/core_algo/gnn_mea.py", line 997, in attack
-fileObject = open('./gnnip/data/' + self.dataset.dataset_name +
-FileNotFoundError: [Errno 2] No such file or directory: './gnnip/data/pubmed/target_graph_index.txt'
+File "/mnt/g/Final_Edition/GNNIP-main/GNNIP/protect/gnn_mea.py", line 997, in attack
+fileObject = open('./pygip/data/' + self.dataset.dataset_name +
+FileNotFoundError: [Errno 2] No such file or directory: './pygip/data/pubmed/target_graph_index.txt'
 ```

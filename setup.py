@@ -1,4 +1,8 @@
+import os
+import subprocess
+import sys
 from setuptools import setup, find_packages
+from setuptools.command.install import install
 
 with open('requirements.txt') as f:
     requirements = f.read().splitlines()
@@ -10,6 +14,6 @@ setup(
     long_description=open('README.md').read(),
     classifiers=[
         'License :: OSI Approved :: MIT License',
-        'Programming Language :: Python :: 3.9',
+        'Programming Language :: Python :: 3.10',
     ]
 )

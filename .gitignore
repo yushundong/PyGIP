@@ -9,13 +9,14 @@ __pycache__/*
 # *.txt
 # *.pickle
 *.sh
-*.md
+# *.md
 *.pt
 *.pyc
 *.csv
 *.json
 *.zip
-*.in
+*.egg-info
+# *.in
 
 
 error/
@@ -37,5 +38,5 @@ csv_test.py
 dataloading_test.ipynb
 dataloading.py
 pipeline.py
-setup.cfg
+# setup.cfg
 requirements.txt.DS_Store

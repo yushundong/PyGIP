@@ -1,5 +1,5 @@
-from GNNIP.core_algo import *
-from GNNIP.core_algo.Defense import Watermark_sage
+from pygip.protect import *
+from pygip.protect.Defense import Watermark_sage
 
 attack_name = int(input("Please choose the number:\n1.ModelExtractionAttack0\n2.ModelExtractionAttack1\n3.ModelExtractionAttack2\n4.ModelExtractionAttack3\n5.ModelExtractionAttack4\n6.ModelExtractionAttack5\n"))
 dataset_name = int(input("Please choose the number:\n1.Cora\n2.Citeseer\n3.PubMed\n"))

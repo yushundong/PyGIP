@@ -1,4 +1,4 @@
-from gnnip.datasets import *
+from pygip.datasets import *
 import networkx as nx
 import numpy as np
 import torch as th
@@ -17,7 +17,7 @@ from torch_geometric.data import Data
 from torch_geometric.nn import SAGEConv
 from torch_geometric.utils import erdos_renyi_graph
 from torch_geometric.loader import NeighborSampler
-from gnnip.core_algo import *
+from pygip.protect import *
 from dgl.data import CoraGraphDataset
 from dgl.dataloading import NeighborSampler
 from dgl.nn import SAGEConv
@@ -290,7 +290,7 @@ class Defense:
                 flag = True
             else:
                 attack = ModelExtractionAttack5(
-                    datasetCora_merge, 0.25, './gnnip/models/attack_3_subgraph_shadow_model_citeseer_6966.pkl')
+                    datasetCora_merge, 0.25, './pygip/models/attack_3_subgraph_shadow_model_citeseer_6966.pkl')
                 attack.attack()
                 flag = True
         elif (dataset_name == 3):
