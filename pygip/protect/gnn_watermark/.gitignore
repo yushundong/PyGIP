@@ -1,0 +1,9 @@
+*.pt
+*.pth
+*.csv
+*.txt
+*.log
+*.npy
+*.npz
+data/
+results/
