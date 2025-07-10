@@ -21,6 +21,9 @@ from torch_geometric.datasets import PolBlogs  ### Polblogs
 from torch_geometric.datasets import Reddit  ### RedditData
 from torch_geometric.datasets import Yelp  ### YelpData
 from torch_geometric.datasets import TUDataset # ENZYMES
+from torch_geometric.datasets import Coauthor  ### Coauthor CS and Physics
+from torch_geometric.datasets import Amazon  ### Amazon Computers and Photo
+from torch_geometric.datasets import CitationFull  ### CitationFull DBLP
 
 
 def dgl_to_tg(dgl_graph):
@@ -139,7 +142,6 @@ class Cora(Dataset):
         self.feature_number = dataset.num_node_features
         self.label_number = dataset.num_classes  # originally num_classes
 
-        # features, labels
         self.features = data.x
         self.labels = data.y
 
@@ -987,4 +989,288 @@ class YelpData(Dataset):
         self.val_mask = self.data.val_mask
         self.test_mask = self.data.test_mask
 
+
 ####################################################################################################
+# Grove Additional Datasets
+####################################################################################################
+
+class CoauthorCS(Dataset):
+    def __init__(self, api_type='torch_geometric', path='./downloads/'):
+        super().__init__(api_type, path)
+        self.train_ratio = 0.8
+
+        if self.api_type == 'dgl':
+            self.load_dgl_data()
+        elif self.api_type == 'torch_geometric':
+            self.load_tg_data()
+        else:
+            raise ValueError("Unsupported api_type.")
+
+    def load_dgl_data(self):
+        dataset = Coauthor(root=self.path, name='CS')
+        data = dataset[0]
+        self.dataset_name = "coauthor_cs"
+
+        edge_index = data.edge_index.numpy()
+        self.graph = dgl.graph((edge_index[0], edge_index[1]))
+
+        self.graph.ndata['feat'] = data.x
+        self.graph.ndata['label'] = data.y
+
+        # Generate train/test masks
+        self.generate_train_test_masks()
+
+        self.node_number = self.graph.num_nodes()
+        self.feature_number = self.graph.ndata['feat'].shape[1]
+        self.label_number = len(torch.unique(self.graph.ndata['label']))
+        self.features = self.graph.ndata['feat']
+        self.labels = self.graph.ndata['label']
+
+    def load_tg_data(self):
+        dataset = Coauthor(root=self.path, name='CS')
+        data = dataset[0]
+        self.dataset_name = "coauthor_cs"
+
+        self.dataset = dataset
+        self.data = data
+        self.feature_number = dataset.num_node_features
+        self.label_number = dataset.num_classes
+
+        self.features = data.x
+        self.labels = data.y
+
+        # Generate train/test masks since Coauthor doesn't have standard splits
+        self.generate_train_test_masks()
+
+        self.node_number = data.num_nodes
+        self.edge_index = data.edge_index
+
+class AmazonPhoto(Dataset):
+    def __init__(self, api_type='torch_geometric', path='./downloads/'):
+        super().__init__(api_type, path)
+        self.train_ratio = 0.8
+
+        if self.api_type == 'dgl':
+            self.load_dgl_data()
+        elif self.api_type == 'torch_geometric':
+            self.load_tg_data()
+        else:
+            raise ValueError("Unsupported api_type.")
+
+    def load_dgl_data(self):
+        dataset = Amazon(root=self.path, name='Photo')
+        data = dataset[0]
+        self.dataset_name = "amazon_photo"
+
+        edge_index = data.edge_index.numpy()
+        self.graph = dgl.graph((edge_index[0], edge_index[1]))
+
+        self.graph.ndata['feat'] = data.x
+        self.graph.ndata['label'] = data.y
+
+        # Generate train/test masks
+        self.generate_train_test_masks()
+
+        self.node_number = self.graph.num_nodes()
+        self.feature_number = self.graph.ndata['feat'].shape[1]
+        self.label_number = len(torch.unique(self.graph.ndata['label']))
+        self.features = self.graph.ndata['feat']
+        self.labels = self.graph.ndata['label']
+
+    def load_tg_data(self):
+        dataset = Amazon(root=self.path, name='Photo')
+        data = dataset[0]
+        self.dataset_name = "amazon_photo"
+
+        self.dataset = dataset
+        self.data = data
+        self.feature_number = dataset.num_node_features
+        self.label_number = dataset.num_classes
+
+        self.features = data.x
+        self.labels = data.y
+
+        # Generate train/test masks since Amazon doesn't have standard splits
+        self.generate_train_test_masks()
+
+        self.node_number = data.num_nodes
+        self.edge_index = data.edge_index
+
+class CitationFullDBLP(Dataset):
+    def __init__(self, api_type='torch_geometric', path='./downloads/'):
+        super().__init__(api_type, path)
+        self.train_ratio = 0.8
+
+        if self.api_type == 'dgl':
+            self.load_dgl_data()
+        elif self.api_type == 'torch_geometric':
+            self.load_tg_data()
+        else:
+            raise ValueError("Unsupported api_type.")
+
+    def load_dgl_data(self):
+        dataset = CitationFull(root=self.path, name='DBLP')
+        data = dataset[0]
+        self.dataset_name = "citationfull_dblp"
+
+        edge_index = data.edge_index.numpy()
+        self.graph = dgl.graph((edge_index[0], edge_index[1]))
+
+        self.graph.ndata['feat'] = data.x
+        self.graph.ndata['label'] = data.y
+
+        # Generate train/test masks
+        self.generate_train_test_masks()
+
+        self.node_number = self.graph.num_nodes()
+        self.feature_number = self.graph.ndata['feat'].shape[1]
+        self.label_number = len(torch.unique(self.graph.ndata['label']))
+        self.features = self.graph.ndata['feat']
+        self.labels = self.graph.ndata['label']
+
+    def load_tg_data(self):
+        dataset = CitationFull(root=self.path, name='DBLP')
+        data = dataset[0]
+        self.dataset_name = "citationfull_dblp"
+
+        self.dataset = dataset
+        self.data = data
+        self.feature_number = dataset.num_node_features
+        self.label_number = dataset.num_classes
+
+        self.features = data.x
+        self.labels = data.y
+
+        # Generate train/test masks since CitationFull doesn't have standard splits
+        self.generate_train_test_masks()
+
+        self.node_number = data.num_nodes
+        self.edge_index = data.edge_index
+
+# Using a different implementation, as DGL and Torch Geometric do not currently include the ACM dataset.
+class ACM(Dataset):
+
+    def __init__(self, api_type='torch_geometric', path='./downloads/'):
+        super().__init__(api_type, path)
+        self.train_ratio = 0.8
+        
+        if self.api_type == 'torch_geometric':
+            self.load_tg_data()
+        else:
+            raise ValueError("ACM dataset only supports torch_geometric api_type")
+    
+    def _download_acm_dataset(self):
+        """Download ACM dataset if not present"""
+        import urllib.request
+        import os
+        
+        # Create data directory if it doesn't exist
+        os.makedirs(self.path, exist_ok=True)
+        
+        # ACM dataset URL
+        acm_url = "https://github.com/xinleihe/GNNStealing/raw/master/code/datasets/acm.npz"
+        acm_path = os.path.join(self.path, 'acm.npz')
+        
+        if not os.path.exists(acm_path):
+            print(f"Downloading ACM dataset from {acm_url}...")
+            try:
+                urllib.request.urlretrieve(acm_url, acm_path)
+                print(f"ACM dataset downloaded successfully to {acm_path}")
+            except Exception as e:
+                raise RuntimeError(f"Failed to download ACM dataset: {e}")
+        else:
+            print(f"ACM dataset already exists at {acm_path}")
+    
+    def _load_npz_to_pyg(self, npz_path):
+        """Load NPZ file and convert to PyTorch Geometric format"""
+        import numpy as np
+        import scipy.sparse as sp
+        import torch
+        from torch_geometric.data import Data
+        
+        print(f"Loading ACM dataset from {npz_path}")
+        
+        # Load NPZ file
+        npz_data = np.load(npz_path, allow_pickle=True)
+        print(f"NPZ file keys: {list(npz_data.keys())}")
+        
+        # Extract node features
+        if 'node_attr' in npz_data:
+            node_attr_raw = npz_data['node_attr']
+            if isinstance(node_attr_raw, np.ndarray) and node_attr_raw.dtype == np.dtype('O'):
+                if node_attr_raw.size == 1 and sp.issparse(node_attr_raw.flat[0]):
+                    x = torch.FloatTensor(node_attr_raw.flat[0].toarray())
+                else:
+                    raise ValueError("Unexpected node_attr format")
+            elif sp.issparse(node_attr_raw):
+                x = torch.FloatTensor(node_attr_raw.toarray())
+            else:
+                x = torch.FloatTensor(node_attr_raw)
+        else:
+            raise ValueError("'node_attr' key missing in NPZ file")
+        
+        # Extract node labels
+        if 'node_label' in npz_data:
+            node_label_raw = npz_data['node_label']
+            if isinstance(node_label_raw, np.ndarray):
+                if node_label_raw.dtype == np.dtype('O'):
+                    y = torch.LongTensor([int(lbl) for lbl in node_label_raw.flat])
+                else:
+                    y = torch.LongTensor(node_label_raw.astype(np.int64))
+            else:
+                y = torch.LongTensor(node_label_raw)
+        else:
+            raise ValueError("'node_label' key missing in NPZ file")
+        
+        # Extract adjacency matrix and convert to edge_index
+        if 'adj_matrix' in npz_data:
+            adj_raw = npz_data['adj_matrix']
+            if isinstance(adj_raw, np.ndarray) and adj_raw.dtype == np.dtype('O'):
+                if adj_raw.size == 1 and sp.issparse(adj_raw.flat[0]):
+                    adj_processed = adj_raw.flat[0]
+                else:
+                    raise ValueError("Unexpected adj_matrix format")
+            elif sp.issparse(adj_raw):
+                adj_processed = adj_raw
+            else:
+                adj_processed = sp.csr_matrix(adj_raw)
+            
+            # Convert to edge index
+            adj_coo = adj_processed.tocoo()
+            edge_index = torch.LongTensor(np.vstack((adj_coo.row, adj_coo.col)))
+        else:
+            raise ValueError("'adj_matrix' key missing in NPZ file")
+        
+        # Create PyTorch Geometric Data object
+        data = Data(x=x, edge_index=edge_index, y=y)
+        data.num_classes = len(torch.unique(y))
+        
+        print(f"Loaded ACM: {data.num_nodes} nodes, {data.num_edges} edges, "
+              f"{data.num_node_features} features, {data.num_classes} classes")
+        
+        return data
+    
+    def load_tg_data(self):
+        """Load ACM dataset in PyTorch Geometric format"""
+        import os
+        
+        # Download dataset if needed
+        self._download_acm_dataset()
+        
+        # Load from NPZ file
+        npz_path = os.path.join(self.path, 'acm.npz')
+        data = self._load_npz_to_pyg(npz_path)
+        
+        # Set dataset attributes
+        self.dataset_name = "acm"
+        self.data = data
+        self.feature_number = data.num_node_features
+        self.label_number = data.num_classes
+        self.node_number = data.num_nodes
+        self.edge_index = data.edge_index
+        self.features = data.x
+        self.labels = data.y
+        
+        # Generate train/test masks
+        self.generate_train_test_masks()
+

@@ -20,7 +20,11 @@ from .datasets import (
     IMDB,
     Computer,
     Photo,
-    YelpData
+    YelpData,
+    CoauthorCS,
+    AmazonPhoto,
+    ACM,
+    CitationFullDBLP
 )
 
 __all__ = [
@@ -45,5 +49,9 @@ __all__ = [
     'IMDB',
     'Computer',
     'Photo',
-    'YelpData'
+    'YelpData',
+    'CoauthorCS',
+    'AmazonPhoto',
+    'ACM',
+    'CitationFullDBLP'
 ]
