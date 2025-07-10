@@ -4,10 +4,16 @@ from .WatermarkDefense import (
     WatermarkByRandomGraph,
 )
 from .ImperceptibleWM import OwnerWatermarkingDefense
+from .grove_defense import (
+    GroveDefense,
+    SimilarityModel,
+)
 
 
 __all__ = [
     'BaseDefense',
     'WatermarkByRandomGraph',
-    'OptimizedWatermarkDefense'
+    'OptimizedWatermarkDefense',
+    'GroveDefense',
+    'SimilarityModel',
 ]
