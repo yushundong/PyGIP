@@ -27,7 +27,9 @@ class QueryBasedVerificationDefense(BaseDefense):
 
 
     
-    def defend(self, num_trials=10, k=5, attack_type='mettack', knowledge='full', mode='transductive', verbose=True, **kwargs):
+    def defend(self, fingerprint_mode='inductive', knowledge='full', attack_type='bitflip',
+            k=5, num_trials=10, use_edge_perturbation=False, verbose=True, **kwargs):
+
         """
         Main defense routine. Generates fingerprints, runs attacks, and verifies integrity.
         Returns a dict with per-trial and average metrics.
@@ -37,50 +39,69 @@ class QueryBasedVerificationDefense(BaseDefense):
             if verbose:
                 print(f"\n=== Trial {trial+1}/{num_trials} ===")
 
-            # Step 1: Train target model
+  
             model_clean = self._train_target_model()
             acc_clean = self._evaluate_accuracy(model_clean, self.dataset)
 
-            # Step 2: Fingerprint it
-            fingerprints = self._generate_fingerprints(model_clean, mode=mode, knowledge=knowledge, k=k, **kwargs)
 
-            # Step 3: Attack the model
-            poisoned_model, attack_info = self._run_attack(model_clean, attack_type=attack_type, knowledge=knowledge, **kwargs)
+            fingerprints = self._generate_fingerprints(model_clean, mode=fingerprint_mode, knowledge=knowledge, k=k, 
+                                                       perturb_fingerprints=use_edge_perturbation,
+                                                       perturb_budget=kwargs.get('perturb_budget', 5),
+                                                       **kwargs)
+
+
+            bit = kwargs.pop('bit', 30)
+            bfa_variant = kwargs.pop('bfa_variant', 'BFA')
+
+            poisoned_model, attack_info = self._run_attack(
+                model_clean,
+                attack_type=attack_type,
+                knowledge=knowledge,
+                bit=bit,
+                bfa_variant=bfa_variant,
+                **kwargs
+            )
+
             poisoned_dataset = copy.deepcopy(self.dataset)
             if 'graph' in attack_info:
                 poisoned_dataset.graph = attack_info['graph']
             acc_poisoned = self._evaluate_accuracy(poisoned_model, poisoned_dataset)
 
 
-            # Step 4: Detect fingerprint flips
             flipped_info = self._evaluate_fingerprints(poisoned_model, fingerprints)
 
             flip_rate = flipped_info['flip_rate']
             acc_drop = acc_clean - acc_poisoned
+            num_flipped = len(flipped_info['flipped'])
+            num_total = len(fingerprints)
+            detection_rate = num_flipped / num_total if num_total > 0 else 0.0
 
             if verbose:
                 print(f"Clean Accuracy:    {acc_clean:.4f}")
                 print(f"Poisoned Accuracy: {acc_poisoned:.4f}")
                 print(f"Accuracy Drop:     {acc_drop:.4f}")
                 print(f"Flip Rate:         {flip_rate:.4f}")
+                print(f"Detection Rate:    {detection_rate:.4f}")
+
 
             trial_results.append({
                 'flip_rate': flip_rate,
                 'accuracy_drop': acc_drop,
+                'detection_rate': detection_rate
             })
 
-        # Compute averages
+
         avg_flip_rate = sum(r['flip_rate'] for r in trial_results) / num_trials
         avg_acc_drop = sum(r['accuracy_drop'] for r in trial_results) / num_trials
+        avg_detection_rate = sum(r['detection_rate'] for r in trial_results) / num_trials
 
-        print(f"Clean Graph NumEdges:    {self.dataset.graph.num_edges()}")
-        print(f"Poisoned Graph NumEdges: {poisoned_model.graph.num_edges() if hasattr(poisoned_model, 'graph') else 'N/A'}")
 
 
         return {
             'trial_results': trial_results,
             'average_flip_rate': avg_flip_rate,
             'average_accuracy_drop': avg_acc_drop,
+            'average_detection_rate': avg_detection_rate
         }
 
 
@@ -176,6 +197,16 @@ class QueryBasedVerificationDefense(BaseDefense):
                 perturb_budget=kwargs.get('perturb_budget', 5),
             )
             fingerprints = generator.generate_fingerprints(method=knowledge)
+            if kwargs.get('perturb_fingerprints', False):
+                for i, (graph, node_idx, label) in enumerate(fingerprints):
+                    generator.shadow_graph = graph 
+                    generator.greedy_edge_perturbation(
+                        node_idx=node_idx,
+                        perturb_budget=kwargs.get('perturb_budget', 5),
+                        knowledge=knowledge
+                    )
+                    fingerprints[i] = (generator.shadow_graph, node_idx, label)
+
             unified_fingerprints = fingerprints
 
         else:
@@ -222,13 +253,16 @@ class QueryBasedVerificationDefense(BaseDefense):
             metadata: dict with info about the attack
         """
         if attack_type == 'bitflip':
-            attacker = BitFlipAttack(model=model, attack_type=kwargs.get('bitflip_type', 'random'), bit=kwargs.get('bit', 0))
-            info = attacker.apply()
-            return model, {'type': 'bitflip', 'info': info}
+            bit = kwargs.get('bit', 30)
+            bfa_variant = kwargs.get('bfa_variant', 'BFA')
+            attacker = BitFlipAttack(model, attack_type=bfa_variant, bit=bit)
+            attack_info = attacker.apply()
+            return model, attack_info
 
         elif attack_type == 'random':
             perturbed_graph = self._random_edge_addition_poisoning(
-                perturb_frac=kwargs.get('perturb_frac', 0.01),
+                node_fraction=kwargs.get('node_fraction', 0.1),
+                edges_per_node=kwargs.get('edges_per_node', 5),
                 random_seed=kwargs.get('random_seed', None),
             )
             poisoned_model = self._retrain_poisoned_model(
@@ -238,6 +272,10 @@ class QueryBasedVerificationDefense(BaseDefense):
             return poisoned_model, {'type': 'random_poison', 'graph': perturbed_graph}
 
         elif attack_type == 'mettack':
+            num_edges = self.dataset.graph.num_edges()
+            poison_frac = kwargs.get('poison_frac', 0.05)
+            n_perturbations = int(poison_frac * num_edges)
+
             helper = MettackHelper(
                 graph=self.dataset.graph,
                 features=self.dataset.features,
@@ -245,7 +283,7 @@ class QueryBasedVerificationDefense(BaseDefense):
                 train_mask=self.dataset.train_mask,
                 val_mask=getattr(self.dataset, 'val_mask', None),
                 test_mask=self.dataset.test_mask,
-                n_perturbations=kwargs.get('n_perturbations', 5),
+                n_perturbations=n_perturbations,
                 device=self.device,
                 max_perturbations=kwargs.get('max_perturbations', 50),
                 surrogate_epochs=kwargs.get('surrogate_epochs', 30),
@@ -262,48 +300,45 @@ class QueryBasedVerificationDefense(BaseDefense):
             raise ValueError(f"Unsupported attack_type: {attack_type}")
 
 
-    def _random_edge_addition_poisoning(dataset, perturb_frac, random_seed=None):
+    def _random_edge_addition_poisoning(self, node_fraction=0.1, edges_per_node=5, random_seed=None):
         """
-        Returns a new DGLGraph with random edges added.
+        Poison a fraction of nodes by adding random edges.
 
         Args:
-            dataset: Dataset object (with .graph as DGLGraph)
-            perturb_frac: Fraction of edges to add (e.g., 0.01 = 1%)
-            random_seed: Optional integer for reproducibility
+            dataset: Dataset object (DGL-based)
+            node_fraction: Fraction of nodes to poison (e.g., 0.1 = 10%)
+            edges_per_node: Number of random edges to add per poisoned node
+            random_seed: Optional seed
 
         Returns:
-            poisoned_graph: DGLGraph (deepcopy of original with new edges)
+            poisoned_graph: DGLGraph
         """
-
         if random_seed is not None:
             random.seed(random_seed)
             torch.manual_seed(random_seed)
 
-        orig_graph = dataset.graph
-        poisoned_graph = copy.deepcopy(orig_graph)
+        poisoned_graph = copy.deepcopy(self.dataset.graph)
         num_nodes = poisoned_graph.num_nodes()
-        num_edges_to_add = int(perturb_frac * orig_graph.num_edges())
+        num_poisoned_nodes = int(node_fraction * num_nodes)
+        poisoned_nodes = random.sample(range(num_nodes), num_poisoned_nodes)
 
-        existing_edges = set(zip(
-            orig_graph.edges()[0].tolist(),
-            orig_graph.edges()[1].tolist()
-        ))
+        new_edges = []
 
-        candidate_pairs = [
-            (i, j)
-            for i in range(num_nodes)
-            for j in range(num_nodes)
-            if i != j and (i, j) not in existing_edges
-        ]
+        for src in poisoned_nodes:
+            for _ in range(edges_per_node):
+                dst = random.randint(0, num_nodes - 1)
+                if src != dst and \
+                not poisoned_graph.has_edges_between(src, dst) and \
+                not poisoned_graph.has_edges_between(dst, src):
+                    new_edges.append((src, dst))
+                    new_edges.append((dst, src))
 
-        if len(candidate_pairs) < num_edges_to_add:
-            raise ValueError("Perturbation budget too large: not enough candidate edges.")
-
-        new_edges = random.sample(candidate_pairs, num_edges_to_add)
-        src, dst = zip(*new_edges)
-        poisoned_graph.add_edges(src, dst)
+        if new_edges:
+            src, dst = zip(*new_edges)
+            poisoned_graph.add_edges(src, dst)
 
         return poisoned_graph
+
 
     def _retrain_poisoned_model(self, poisoned_graph, epochs=200):
         """
@@ -397,7 +432,7 @@ class QueryBasedVerificationDefense(BaseDefense):
 
 
 class TransductiveFingerprintGenerator:
-    def __init__(self, model, dataset, candidate_fraction=1.0, random_seed=None, device='cpu', randomize=True):
+    def __init__(self, model, dataset, candidate_fraction=0.3, random_seed=None, device='cpu', randomize=True):
         self.model = model.to(device)
         self.dataset = dataset
         self.candidate_fraction = candidate_fraction
@@ -419,7 +454,6 @@ class TransductiveFingerprintGenerator:
                 generator.manual_seed(self.random_seed)
             idx = torch.randperm(len(all_nodes), generator=generator)[:num_candidates]
             candidates = all_nodes[idx]
-            print(f"[DEBUG] Trial {self.random_seed}: Sampled candidates = {candidates.tolist()[:5]}")
         else:
             candidates = all_nodes
 
@@ -442,7 +476,6 @@ class TransductiveFingerprintGenerator:
             scores.append(grad_norm)
 
         scores_tensor = torch.tensor(scores, device=self.device)
-        print(f"[FULL] Fingerprint scores: mean={scores_tensor.mean():.4f}, std={scores_tensor.std():.4f}, max={scores_tensor.max():.4f}, min={scores_tensor.min():.4f}")
         return scores_tensor
 
 
@@ -454,7 +487,6 @@ class TransductiveFingerprintGenerator:
             labels = probs.argmax(dim=1)
             scores = 1.0 - probs[candidate_nodes, labels[candidate_nodes]]
 
-        print(f"[LIMITED] Fingerprint scores: mean={scores.mean():.4f}, std={scores.std():.4f}, max={scores.max():.4f}, min={scores.min():.4f}")
         return scores
 
 
@@ -470,7 +502,6 @@ class TransductiveFingerprintGenerator:
         filtered_candidates = candidate_nodes[mask]
 
         if filtered_scores.size(0) < k:
-            print(f"[WARN] Only {filtered_scores.size(0)} candidates left after filtering, reducing k to fit.")
             k = filtered_scores.size(0)
 
         topk = torch.topk(filtered_scores, k)
@@ -520,12 +551,6 @@ class TransductiveFingerprintGenerator:
             fingerprint_nodes, _ = self.select_top_fingerprints(scores, candidate_nodes, k, method=method)
             fingerprints = [(int(n), int(labels[n])) for n in fingerprint_nodes]
 
-
-        labels_only = [label for (_, label) in fingerprints]
-        nodes_only = [node for (node, _) in fingerprints]
-
-        print(f"[{method.upper()}] Fingerprint label distribution: {Counter(labels_only)}")
-        print(f"[{method.upper()}] Fingerprint node IDs: {nodes_only}")
 
         return fingerprints
 
@@ -585,7 +610,6 @@ class InductiveFingerprintGenerator:
                 generator.manual_seed(self.random_seed)
             idx = torch.randperm(len(all_nodes), generator=generator)[:num_candidates]
             candidates = all_nodes[idx]
-            print(f"[DEBUG] Trial {self.random_seed}: Sampled candidates = {candidates.tolist()[:5]}")
         else:
             candidates = all_nodes
 
@@ -610,7 +634,7 @@ class InductiveFingerprintGenerator:
             return score
 
         elif self.knowledge == 'full':
-            # Full knowledge: compute gradient norm wrt input features of the node
+
             features.requires_grad_(True)
             logits = self.model(self.shadow_graph.to(self.device), features)
             pred = logits[node_idx]
@@ -622,11 +646,11 @@ class InductiveFingerprintGenerator:
                 torch.tensor([label], device=self.device)
             )
             loss.backward(retain_graph=True)
-            # For simplicity, we use grad wrt features (could be extended to model params)
+
             grad = features.grad[node_idx]
             grad_norm_sq = (grad ** 2).sum().item()
             features.requires_grad_(False)
-            features.grad = None  # Clean up
+            features.grad = None  
             return grad_norm_sq
 
         else:
@@ -646,7 +670,7 @@ class InductiveFingerprintGenerator:
         for idx in candidates:
             score = self.compute_fingerprint_score(idx)
             scores.append((score, int(idx)))
-        # Sort candidates by score, descending
+
         scores.sort(reverse=True)
         selected = [idx for (_, idx) in scores[:self.num_fingerprints]]
         return selected
@@ -732,7 +756,7 @@ class InductiveFingerprintGenerator:
         Returns:
             List[int]: Indices of perturbed fingerprint nodes (features in shadow_graph are updated in-place).
         """
-        epsilon = 0.01  # Perturbation magnitude; you may want to tune this
+        epsilon = 0.01 
         features = self.shadow_graph.ndata['feat'] if hasattr(self.shadow_graph, 'ndata') else self.shadow_graph.x
         features = features.clone().detach().to(self.device)
         self.shadow_graph = self.shadow_graph.to(self.device)
@@ -743,7 +767,7 @@ class InductiveFingerprintGenerator:
             while num_tries < self.perturb_budget and improved:
                 improved = False
                 current_score = self.compute_fingerprint_score(idx)
-                # Get current prediction
+
                 self.model.eval()
                 with torch.no_grad():
                     logits = self.model(self.shadow_graph, features)
@@ -752,29 +776,197 @@ class InductiveFingerprintGenerator:
                 for dim in range(features.shape[1]):
                     for direction in [+1, -1]:
                         features[idx][dim] += direction * epsilon
-                        # Get new prediction and score
+
                         self.model.eval()
                         with torch.no_grad():
                             logits_new = self.model(self.shadow_graph, features)
                             new_pred_label = logits_new[idx].argmax().item()
                         new_score = self.compute_fingerprint_score(idx)
-                        # Accept if label unchanged and score increased
+
                         if new_pred_label == pred_label and new_score > current_score:
                             current_score = new_score
                             improved = True
                             num_tries += 1
                         else:
-                            features[idx][dim] = original_features[dim]  # Revert
+                            features[idx][dim] = original_features[dim]  
                         if num_tries >= self.perturb_budget:
                             break
                     if num_tries >= self.perturb_budget:
                         break
-        # Optionally, update self.shadow_graph features (depends on your data structure)
+
         if hasattr(self.shadow_graph, 'ndata'):
             self.shadow_graph.ndata['feat'] = features
         else:
             self.shadow_graph.x = features
         return node_indices
+
+
+    def greedy_edge_perturbation(self, node_idx, perturb_budget=5, knowledge='full'):
+        """
+        Dispatch to greedy edge perturbation strategy based on verifier knowledge level.
+
+        Args:
+            node_idx (int): Fingerprint node index.
+            perturb_budget (int): Number of edge perturbations allowed.
+            knowledge (str): 'full' or 'limited'
+        """
+        if knowledge == 'full':
+            self._greedy_edge_perturbation_f(node_idx, perturb_budget)
+        elif knowledge == 'limited':
+            self._greedy_edge_perturbation_l(node_idx, perturb_budget)
+        else:
+            raise ValueError("knowledge must be 'full' or 'limited'")
+
+
+    def _greedy_edge_perturbation_f(self, node_idx, perturb_budget):
+        """
+        Full knowledge edge perturbation (Inductive-F). 
+        Increases fingerprint score using model gradients while preserving prediction.
+        """
+        import copy
+        from torch_geometric.utils import to_networkx, from_networkx
+        import torch
+
+        g_nx = to_networkx(self.shadow_graph.to('cpu'), to_undirected=True)
+        x = self.dataset.features.to(self.device)
+        self.model.eval()
+
+        with torch.no_grad():
+            original_pred = self.model(self.shadow_graph.to(self.device), x)[node_idx].argmax().item()
+
+        def score_fn(modified_graph):
+            return self._fingerprint_score(node_idx, modified_graph.to(self.device), x)
+
+        neighbors = list(g_nx.neighbors(node_idx))
+        non_neighbors = list(set(range(self.dataset.graph.num_nodes())) - set(neighbors) - {node_idx})
+
+        applied = 0
+        while applied < perturb_budget:
+            best_delta = 0
+            best_graph = None
+            best_action = None
+
+
+            for nbr in non_neighbors:
+                temp_g = copy.deepcopy(g_nx)
+                temp_g.add_edge(node_idx, nbr)
+                g_temp = from_networkx(temp_g).to(self.device)
+                with torch.no_grad():
+                    pred = self.model(g_temp, x)[node_idx].argmax().item()
+                if pred != original_pred:
+                    continue
+                score = score_fn(g_temp)
+                delta = score - score_fn(self.shadow_graph)
+                if delta > best_delta:
+                    best_delta = delta
+                    best_graph = g_temp
+                    best_action = ('add', nbr)
+
+
+            for nbr in neighbors:
+                temp_g = copy.deepcopy(g_nx)
+                if temp_g.has_edge(node_idx, nbr):
+                    temp_g.remove_edge(node_idx, nbr)
+                    g_temp = from_networkx(temp_g).to(self.device)
+                    with torch.no_grad():
+                        pred = self.model(g_temp, x)[node_idx].argmax().item()
+                    if pred != original_pred:
+                        continue
+                    score = score_fn(g_temp)
+                    delta = score - score_fn(self.shadow_graph)
+                    if delta > best_delta:
+                        best_delta = delta
+                        best_graph = g_temp
+                        best_action = ('remove', nbr)
+
+            if best_graph is None:
+                break  
+            self.shadow_graph = best_graph
+            g_nx = to_networkx(best_graph.to('cpu'), to_undirected=True)
+
+            if best_action[0] == 'add':
+                non_neighbors.remove(best_action[1])
+                neighbors.append(best_action[1])
+            else:
+                neighbors.remove(best_action[1])
+                non_neighbors.append(best_action[1])
+
+            applied += 1
+
+    def _greedy_edge_perturbation_l(self, node_idx, perturb_budget):
+        """
+        Limited knowledge edge perturbation (Inductive-L). 
+        Uses confidence margin (1 - confidence) as proxy for fingerprint sensitivity.
+        """
+        import copy
+        from torch_geometric.utils import to_networkx, from_networkx
+        import torch
+        import torch.nn.functional as F
+
+        g_nx = to_networkx(self.shadow_graph.to('cpu'), to_undirected=True)
+        x = self.dataset.features.to(self.device)
+        self.model.eval()
+
+        with torch.no_grad():
+            logits = self.model(self.shadow_graph.to(self.device), x)
+            original_pred = logits[node_idx].argmax().item()
+            original_conf = F.softmax(logits[node_idx], dim=0)[original_pred].item()
+            original_score = 1 - original_conf
+
+        def score_fn(modified_graph):
+            with torch.no_grad():
+                logits = self.model(modified_graph.to(self.device), x)
+                pred = logits[node_idx].argmax().item()
+                if pred != original_pred:
+                    return -1 
+                conf = F.softmax(logits[node_idx], dim=0)[pred].item()
+                return 1 - conf
+
+        neighbors = list(g_nx.neighbors(node_idx))
+        non_neighbors = list(set(range(self.dataset.graph.num_nodes())) - set(neighbors) - {node_idx})
+
+        applied = 0
+        while applied < perturb_budget:
+            best_delta = 0
+            best_graph = None
+            best_action = None
+
+            for nbr in non_neighbors:
+                temp_g = copy.deepcopy(g_nx)
+                temp_g.add_edge(node_idx, nbr)
+                g_temp = from_networkx(temp_g).to(self.device)
+                new_score = score_fn(g_temp)
+                delta = new_score - original_score
+                if new_score >= 0 and delta > best_delta:
+                    best_delta = delta
+                    best_graph = g_temp
+                    best_action = ('add', nbr)
+
+            for nbr in neighbors:
+                temp_g = copy.deepcopy(g_nx)
+                if temp_g.has_edge(node_idx, nbr):
+                    temp_g.remove_edge(node_idx, nbr)
+                    g_temp = from_networkx(temp_g).to(self.device)
+                    new_score = score_fn(g_temp)
+                    delta = new_score - original_score
+                    if new_score >= 0 and delta > best_delta:
+                        best_delta = delta
+                        best_graph = g_temp
+                        best_action = ('remove', nbr)
+
+            if best_graph is None:
+                break
+            self.shadow_graph = best_graph
+            g_nx = to_networkx(best_graph.to('cpu'), to_undirected=True)
+
+            if best_action[0] == 'add':
+                non_neighbors.remove(best_action[1])
+                neighbors.append(best_action[1])
+            else:
+                neighbors.remove(best_action[1])
+                non_neighbors.append(best_action[1])
+
+            applied += 1
 
 
 class BitFlipAttack:
@@ -785,7 +977,7 @@ class BitFlipAttack:
         
     def _get_target_params(self):
         params = [p for p in self.model.parameters() if p.requires_grad and p.numel() > 0]
-        if self.attack_type == 'random':
+        if self.attack_type in ['random', 'BFA']:
             return params
         elif self.attack_type == 'BFA-F':
             return [params[0]]
@@ -824,49 +1016,42 @@ class BitFlipAttack:
             'attack_type': self.attack_type
         }
     
+    
 
 class MettackHelper:
     def __init__(self, graph, features, labels, train_mask, val_mask, test_mask,
                  n_perturbations=5, device='cpu', max_perturbations=50,
                  surrogate_epochs=30, candidate_sample_size=20):
-        # Add self-loops to the original graph to prevent zero in-degree issues
         self.graph = dgl.add_self_loop(graph).to(device)
         self.features = features.to(device)
         self.labels = labels.to(device)
         self.train_mask = train_mask.to(device)
         self.surrogate_epochs = surrogate_epochs
         self.candidate_sample_size = candidate_sample_size
-        # Handle case where val_mask might be None
         if val_mask is not None:
             self.val_mask = val_mask.to(device)
         else:
-            # Create a validation mask from a subset of training data
             self.val_mask = self._create_val_mask_from_train(train_mask).to(device)
             
         self.test_mask = test_mask.to(device)
         
-        # Cap the number of perturbations to a reasonable limit
-        self.n_perturbations = min(n_perturbations, max_perturbations)
+        self.n_perturbations = n_perturbations
         self.device = device
 
-        # Surrogate GCN, matches the victim model structure from the paper (Sec. 6.1)
         in_feats = features.shape[1]
         n_classes = int(labels.max().item()) + 1
         self.surrogate = GCN(in_feats, n_classes).to(device)
 
-        # For reproducibility (optional)
         torch.manual_seed(42)
         np.random.seed(42)
 
-        # Track current edge modifications if desired
+
         self.modified_edges = set()
         
-        # Store original adjacency for candidate generation (without self-loops for edge candidates)
         original_graph_no_self_loop = dgl.remove_self_loop(graph)
         self.original_edges = set(zip(original_graph_no_self_loop.edges()[0].cpu().numpy(), 
                                     original_graph_no_self_loop.edges()[1].cpu().numpy()))
         
-        # Pre-compute candidate edges for efficiency
         self.candidate_edges = self._get_candidate_edges()
 
     def _create_val_mask_from_train(self, train_mask):
@@ -875,17 +1060,16 @@ class MettackHelper:
         This is needed when the dataset doesn't provide a validation mask.
         """
         train_indices = torch.where(train_mask)[0]
-        n_val = min(500, len(train_indices) // 4)  # Use 25% of training data or 500, whichever is smaller
-        
-        # Randomly select validation indices from training indices
+        n_val = min(500, len(train_indices) // 4)  
+
         perm = torch.randperm(len(train_indices))
         val_indices = train_indices[perm[:n_val]]
         
-        # Create validation mask
+        
         val_mask = torch.zeros_like(train_mask, dtype=torch.bool)
         val_mask[val_indices] = True
         
-        # Update training mask to exclude validation nodes
+
         self.train_mask = train_mask.clone()
         self.train_mask[val_indices] = False
         
@@ -900,15 +1084,14 @@ class MettackHelper:
         """
         print("Starting Mettack attack...")
         
-        # 1. Train surrogate GCN on the clean graph
+
         print("Training surrogate model...")
         self._train_surrogate()
 
-        # 2. Run bi-level optimization to find edge perturbations
+
         print("Applying structure attack...")
         poisoned_graph = self._apply_structure_attack()
 
-        # 3. (Optional) Retrain model on poisoned_graph and collect metrics
         print("Evaluating attack results...")
         metrics = self._evaluate(poisoned_graph)
 
@@ -922,7 +1105,7 @@ class MettackHelper:
         optimizer = optim.Adam(self.surrogate.parameters(), lr=0.01, weight_decay=5e-4)
         self.surrogate.train()
         
-        # Standard GCN training loop
+
         for epoch in range(self.surrogate_epochs):
             optimizer.zero_grad()
             logits = self.surrogate(self.graph, self.features)
@@ -956,9 +1139,9 @@ class MettackHelper:
             
             best_edge = None
             best_loss = -float('inf')
-            best_action = None  # 'add' or 'remove'
+            best_action = None  
             
-            # Sample candidate edges for efficiency (reduced for speed)
+
             candidate_sample = np.random.choice(len(self.candidate_edges), 
                                             min(self.candidate_sample_size, len(self.candidate_edges)),
                                             replace=False)
@@ -967,21 +1150,17 @@ class MettackHelper:
             for idx in tqdm(candidate_sample, desc="Evaluating candidates"):
                 edge = self.candidate_edges[idx]
                 
-                # Skip if already perturbed
                 if edge in perturbed_edges or (edge[1], edge[0]) in perturbed_edges:
                     continue
                 
-                # Try both add and remove operations
                 for action in ['add', 'remove']:
                     if action == 'add' and edge in self.original_edges:
                         continue
                     if action == 'remove' and edge not in self.original_edges:
                         continue
                     
-                    # Create temporary graph with this perturbation
                     temp_graph = self._apply_single_perturbation(current_graph, edge, action)
                     
-                    # Evaluate attack loss on this perturbed graph
                     attack_loss = self._compute_attack_loss(temp_graph)
                     
                     if attack_loss > best_loss:
@@ -989,7 +1168,6 @@ class MettackHelper:
                         best_edge = edge
                         best_action = action
             
-            # Apply the best perturbation
             if best_edge is not None:
                 current_graph = self._apply_single_perturbation(current_graph, best_edge, best_action)
                 perturbed_edges.add(best_edge)
@@ -1008,14 +1186,12 @@ class MettackHelper:
         """
         n_nodes = self.graph.num_nodes()
         
-        # Get all possible edges (excluding self-loops for undirected graphs)
         all_possible_edges = []
         for i in range(n_nodes):
-            for j in range(i + 1, n_nodes):  # Assume undirected graph
+            for j in range(i + 1, n_nodes):  
                 all_possible_edges.append((i, j))
         
-        # Convert to set for faster lookup
-        return all_possible_edges[:min(10000, len(all_possible_edges))]  # Limit for efficiency
+        return all_possible_edges[:min(10000, len(all_possible_edges))] 
 
     def _apply_single_perturbation(self, graph, edge, action):
         """
@@ -1024,10 +1200,8 @@ class MettackHelper:
         temp_graph = copy.deepcopy(graph)
         
         if action == 'add':
-            # Add edge in both directions for undirected graph
             temp_graph.add_edges([edge[0], edge[1]], [edge[1], edge[0]])
         elif action == 'remove':
-            # Find and remove the edge
             src, dst = temp_graph.edges()
             edge_ids = []
             
@@ -1038,7 +1212,6 @@ class MettackHelper:
             if edge_ids:
                 temp_graph.remove_edges(edge_ids)
         
-        # Add self-loops to handle zero in-degree nodes
         temp_graph = dgl.add_self_loop(temp_graph)
         
         return temp_graph
@@ -1049,21 +1222,21 @@ class MettackHelper:
         This measures how much the surrogate model's performance degrades.
         Uses proper bi-level optimization as in the original Mettack paper.
         """
-        # Create a temporary surrogate model copy
+
         temp_surrogate = copy.deepcopy(self.surrogate)
         temp_surrogate.train()
         
-        # Fine-tune on perturbed graph for a few steps (bi-level optimization)
+
         optimizer = optim.Adam(temp_surrogate.parameters(), lr=0.01)
         
-        for _ in range(5):  # Reduced from 10 for efficiency but still doing proper retraining
+        for _ in range(5): 
             optimizer.zero_grad()
             logits = temp_surrogate(perturbed_graph, self.features)
             loss = F.cross_entropy(logits[self.train_mask], self.labels[self.train_mask])
             loss.backward()
             optimizer.step()
         
-        # Evaluate on validation set - higher loss means better attack
+
         temp_surrogate.eval()
         with torch.no_grad():
             val_logits = temp_surrogate(perturbed_graph, self.features)
@@ -1077,7 +1250,7 @@ class MettackHelper:
         """
         metrics = {}
         
-        # Evaluate surrogate on clean graph
+
         self.surrogate.eval()
         with torch.no_grad():
             clean_logits = self.surrogate(self.graph, self.features)
@@ -1085,7 +1258,7 @@ class MettackHelper:
                                              self.labels[self.test_mask])
             metrics['clean_test_acc'] = clean_acc
         
-        # Train new model on poisoned graph
+
         poisoned_model = GCN(self.features.shape[1], 
                            int(self.labels.max().item()) + 1).to(self.device)
         optimizer = optim.Adam(poisoned_model.parameters(), lr=0.01, weight_decay=5e-4)
@@ -1098,7 +1271,7 @@ class MettackHelper:
             loss.backward()
             optimizer.step()
         
-        # Evaluate poisoned model
+
         poisoned_model.eval()
         with torch.no_grad():
             poisoned_logits = poisoned_model(poisoned_graph, self.features)
