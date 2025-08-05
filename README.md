@@ -41,7 +41,6 @@
 ### Transductive-F Detection Rate Comparison
 | Attack    | Our Detection Rate | Paper Detection Rate |
 |-----------|--------------------|----------------------|
-
 | BFA       | 0.69               | 0.711                |
 | BFA-F     | 0.67               | 0.96                 |
 | BFA-L     | 0.7                | 0.5                  |
