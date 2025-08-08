@@ -84,3 +84,32 @@ MIT License
 ## Contact
 
 For questions or contributions, please contact blshen@fsu.edu.
+
+---
+
+## ️ GNN Watermark Defense
+
+This module implements the watermarking method proposed in:
+
+**Making Watermark Survive Model Extraction Attacks in Graph Neural Networks**  
+*Wang, Shi, Xu, Sun, and Tang. NeurIPS 2023.*
+
+This implementation is part of our internal reproduction effort, based on the original paper shared by the authors.
+
+###  Integration
+
+- All files are located in:  
+  `pygip/models/defense/gnn_watermark/`
+
+- The module is implemented as a subclass of `DefenseBase`, encapsulating both training and watermark verification steps.
+
+- Entry point script:  
+  `pygip/runners/run_watermark.py`
+
+###  Run the Experiment
+
+To run the full training and verification process:
+
+```bash
+PYTHONPATH=. python -m pygip.runners.run_watermark
+
