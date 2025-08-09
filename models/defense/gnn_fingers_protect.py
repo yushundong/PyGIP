@@ -28,7 +28,7 @@ class FingerprintConstructor(ABC):
     @abstractmethod
     def optimize_fingerprint(self, loss: torch.Tensor, alpha: float, 
                            target_model: nn.Module, positive_models: List[nn.Module], 
-                           negative_models: List[nn.Module]):
+                           negative_models: List[nn.Module], univerifier: Optional[nn.Module] = None):
         """Optimize fingerprint based on loss."""
         pass
 
@@ -64,35 +64,59 @@ class NodeFingerprint(FingerprintConstructor):
         edge_index = adj_matrix.nonzero().t().contiguous()
         return Data(x=x, edge_index=edge_index)
 
-    def get_model_outputs(self, model: nn.Module, num_sampled_nodes: int = 10) -> torch.Tensor:
+    def get_model_outputs(self, model: nn.Module, num_sampled_nodes: int = 10, require_grad: bool = False) -> torch.Tensor:
         """Get model outputs for sampled nodes."""
         model.eval()
-        with torch.no_grad():
+        if require_grad:
             outputs = model(self.fingerprint.x.to(self.device), 
-                          self.fingerprint.edge_index.to(self.device))
-            num_nodes = min(num_sampled_nodes, outputs.size(0))
-            sampled_indices = torch.randperm(outputs.size(0))[:num_nodes]
-            return outputs[sampled_indices].flatten()
+                            self.fingerprint.edge_index.to(self.device))
+        else:
+            with torch.no_grad():
+                outputs = model(self.fingerprint.x.to(self.device), 
+                                self.fingerprint.edge_index.to(self.device))
+        num_nodes = min(num_sampled_nodes, outputs.size(0))
+        sampled_indices = torch.randperm(outputs.size(0))[:num_nodes]
+        return outputs[sampled_indices].flatten()
 
     def optimize_fingerprint(self, loss: torch.Tensor, alpha: float,
                            target_model: nn.Module, positive_models: List[nn.Module],
-                           negative_models: List[nn.Module]):
+                           negative_models: List[nn.Module], univerifier: Optional[nn.Module] = None):
         """Optimize node features and graph structure."""
         if self.fingerprint.x.requires_grad:
             params_to_optimize = [self.fingerprint.x]
             optimizer = torch.optim.Adam(params_to_optimize, lr=alpha)
             
             optimizer.zero_grad()
-            
-            # Recalculate loss for current fingerprint
-            all_outputs, labels = self._collect_model_outputs(
-                target_model, positive_models, negative_models
-            )
-            
-            if len(all_outputs) >= 2:
-                # Apply edge update strategy
+            # Recalculate loss for current fingerprint with gradient
+            all_outputs = []
+            labels = []
+            # Target
+            try:
+                out = self.get_model_outputs(target_model, require_grad=True)
+                all_outputs.append(out); labels.append(1)
+            except:
+                pass
+            for pos_model in random.sample(positive_models, min(8, len(positive_models))):
+                try:
+                    out = self.get_model_outputs(pos_model, require_grad=True)
+                    all_outputs.append(out); labels.append(1)
+                except:
+                    continue
+            for neg_model in random.sample(negative_models, min(8, len(negative_models))):
+                try:
+                    out = self.get_model_outputs(neg_model, require_grad=True)
+                    all_outputs.append(out); labels.append(0)
+                except:
+                    continue
+            if len(all_outputs) >= 2 and univerifier is not None:
+                min_size = min(t.size(0) for t in all_outputs)
+                batch_outputs = torch.stack([t[:min_size] for t in all_outputs])
+                batch_labels = torch.tensor(labels[:len(all_outputs)], dtype=torch.long, device=self.device)
+                preds = univerifier(batch_outputs)
+                current_loss = F.cross_entropy(preds, batch_labels)
+                current_loss.backward()
+                # Apply edge update strategy using gradients on x
                 self._update_graph_structure()
-                
                 optimizer.step()
 
     def _collect_model_outputs(self, target_model: nn.Module, 
@@ -243,23 +267,30 @@ class GraphFingerprint(FingerprintConstructor):
 
         return fingerprints
 
-    def get_model_outputs(self, model: nn.Module) -> torch.Tensor:
+    def get_model_outputs(self, model: nn.Module, require_grad: bool = False) -> torch.Tensor:
         """Get concatenated outputs from all fingerprint graphs."""
         model.eval()
         outputs = []
 
-        with torch.no_grad():
+        if require_grad:
             for fp in self.fingerprints:
                 batch = torch.zeros(fp.x.size(0), dtype=torch.long, device=self.device)
                 fp_device = Data(x=fp.x.to(self.device), edge_index=fp.edge_index.to(self.device))
                 out = model(fp_device.x, fp_device.edge_index, batch)
                 outputs.append(out.squeeze())
+        else:
+            with torch.no_grad():
+                for fp in self.fingerprints:
+                    batch = torch.zeros(fp.x.size(0), dtype=torch.long, device=self.device)
+                    fp_device = Data(x=fp.x.to(self.device), edge_index=fp.edge_index.to(self.device))
+                    out = model(fp_device.x, fp_device.edge_index, batch)
+                    outputs.append(out.squeeze())
 
         return torch.cat(outputs)
 
     def optimize_fingerprint(self, loss: torch.Tensor, alpha: float,
                            target_model: nn.Module, positive_models: List[nn.Module],
-                           negative_models: List[nn.Module]):
+                           negative_models: List[nn.Module], univerifier: Optional[nn.Module] = None):
         """Optimize multiple graph fingerprints."""
         params = []
         for fp in self.fingerprints:
@@ -269,11 +300,35 @@ class GraphFingerprint(FingerprintConstructor):
         if params:
             optimizer = torch.optim.Adam(params, lr=alpha)
             optimizer.zero_grad()
-            
-            # Apply edge update strategies to all graphs
+            # Recompute loss with gradient
+            if univerifier is not None:
+                outputs = []
+                labels = []
+                try:
+                    out = self.get_model_outputs(target_model, require_grad=True)
+                    outputs.append(out); labels.append(1)
+                except:
+                    pass
+                for pos_model in random.sample(positive_models, min(8, len(positive_models))):
+                    try:
+                        outputs.append(self.get_model_outputs(pos_model, require_grad=True)); labels.append(1)
+                    except:
+                        continue
+                for neg_model in random.sample(negative_models, min(8, len(negative_models))):
+                    try:
+                        outputs.append(self.get_model_outputs(neg_model, require_grad=True)); labels.append(0)
+                    except:
+                        continue
+                if len(outputs) >= 2:
+                    min_size = min(t.size(0) for t in outputs)
+                    batch_outputs = torch.stack([t[:min_size] for t in outputs])
+                    batch_labels = torch.tensor(labels[:len(outputs)], dtype=torch.long, device=self.device)
+                    preds = univerifier(batch_outputs)
+                    current_loss = F.cross_entropy(preds, batch_labels)
+                    current_loss.backward()
+            # Edge update based on gradients
             for fp in self.fingerprints:
                 self._apply_edge_ranking_algorithm(fp)
-            
             optimizer.step()
 
     def _apply_edge_ranking_algorithm(self, graph_data: Data):
@@ -285,9 +340,35 @@ class GraphFingerprint(FingerprintConstructor):
         if num_nodes <= 1:
             return
 
-        # Similar implementation as NodeFingerprint._update_graph_structure
-        # but applied to individual graphs in the set
-        pass
+        # Similar to NodeFingerprint update
+        node_importance = torch.norm(graph_data.x.grad, dim=1)
+        adj_matrix = torch.zeros(num_nodes, num_nodes, device=self.device)
+        if hasattr(graph_data, 'edge_index') and graph_data.edge_index.size(1) > 0:
+            adj_matrix[graph_data.edge_index[0], graph_data.edge_index[1]] = 1
+        edge_gradients = torch.zeros_like(adj_matrix)
+        for i in range(num_nodes):
+            for j in range(i+1, num_nodes):
+                edge_gradients[i, j] = (node_importance[i] + node_importance[j]) / 2
+                edge_gradients[j, i] = edge_gradients[i, j]
+        edge_importance = torch.abs(edge_gradients)
+        K = max(1, int(0.1 * max(graph_data.edge_index.size(1), num_nodes)))
+        flat_importance = edge_importance.view(-1)
+        _, top_k_indices = torch.topk(flat_importance, K)
+        top_k_edges = [(idx.item() // num_nodes, idx.item() % num_nodes) for idx in top_k_indices]
+        for i, j in top_k_edges:
+            if i != j:
+                exists = adj_matrix[i, j].item() == 1
+                grad_pos = edge_gradients[i, j].item() >= 0
+                if exists and not grad_pos:
+                    adj_matrix[i, j] = 0; adj_matrix[j, i] = 0
+                elif not exists and grad_pos:
+                    adj_matrix[i, j] = 1; adj_matrix[j, i] = 1
+        # ensure connectivity
+        if adj_matrix.sum().item() < num_nodes - 1:
+            for i in range(min(num_nodes - 1, 3)):
+                j = (i + 1) % num_nodes
+                adj_matrix[i, j] = 1; adj_matrix[j, i] = 1
+        graph_data.edge_index = adj_matrix.nonzero().t().contiguous()
 
 
 class LinkPredictionFingerprint(FingerprintConstructor):
@@ -357,27 +438,55 @@ class LinkPredictionFingerprint(FingerprintConstructor):
 
         return torch.tensor(pairs[:self.num_edge_samples], dtype=torch.long, device=self.device).t()
 
-    def get_model_outputs(self, model: nn.Module) -> torch.Tensor:
+    def get_model_outputs(self, model: nn.Module, require_grad: bool = False) -> torch.Tensor:
         """Get model outputs for link prediction fingerprints."""
         model.eval()
-        with torch.no_grad():
-            model_device = next(model.parameters()).device
-            fingerprint_x = self.fingerprint.x.to(model_device)
-            fingerprint_edge_index = self.fingerprint.edge_index.to(model_device)
-            edge_pairs = self.edge_pairs.to(model_device)
-            
+        model_device = next(model.parameters()).device
+        fingerprint_x = self.fingerprint.x.to(model_device)
+        fingerprint_edge_index = self.fingerprint.edge_index.to(model_device)
+        edge_pairs = self.edge_pairs.to(model_device)
+        if require_grad:
             embeddings = model.get_embeddings(fingerprint_x, fingerprint_edge_index)
             link_probs = model.predict_links(embeddings, edge_pairs)
-            return link_probs.flatten()
+        else:
+            with torch.no_grad():
+                embeddings = model.get_embeddings(fingerprint_x, fingerprint_edge_index)
+                link_probs = model.predict_links(embeddings, edge_pairs)
+        return link_probs.flatten()
 
     def optimize_fingerprint(self, loss: torch.Tensor, alpha: float,
                            target_model: nn.Module, positive_models: List[nn.Module],
-                           negative_models: List[nn.Module]):
+                           negative_models: List[nn.Module], univerifier: Optional[nn.Module] = None):
         """Optimize link prediction fingerprint."""
         if self.fingerprint.x.requires_grad:
             params_to_optimize = [self.fingerprint.x]
             optimizer = torch.optim.Adam(params_to_optimize, lr=alpha)
             optimizer.zero_grad()
+            # Recompute univerifier loss with gradient if provided
+            if univerifier is not None:
+                outputs = []
+                labels = []
+                try:
+                    outputs.append(self.get_model_outputs(target_model, require_grad=True)); labels.append(1)
+                except:
+                    pass
+                for pos_model in random.sample(positive_models, min(8, len(positive_models))):
+                    try:
+                        outputs.append(self.get_model_outputs(pos_model, require_grad=True)); labels.append(1)
+                    except:
+                        continue
+                for neg_model in random.sample(negative_models, min(8, len(negative_models))):
+                    try:
+                        outputs.append(self.get_model_outputs(neg_model, require_grad=True)); labels.append(0)
+                    except:
+                        continue
+                if len(outputs) >= 2:
+                    min_size = min(t.size(0) for t in outputs)
+                    batch_outputs = torch.stack([t[:min_size] for t in outputs])
+                    batch_labels = torch.tensor(labels[:len(outputs)], dtype=torch.long, device=self.device)
+                    preds = univerifier(batch_outputs)
+                    current_loss = F.cross_entropy(preds, batch_labels)
+                    current_loss.backward()
             optimizer.step()
 
 
@@ -472,36 +581,33 @@ class GraphMatchingFingerprint(FingerprintConstructor):
 
         return Data(x=x, edge_index=edge_index)
 
-    def get_model_outputs(self, model: nn.Module) -> torch.Tensor:
+    def get_model_outputs(self, model: nn.Module, require_grad: bool = False) -> torch.Tensor:
         """Get model outputs for graph matching fingerprints."""
         model.eval()
         outputs = []
 
-        with torch.no_grad():
-            for graph1, graph2 in self.fingerprint_pairs:
-                try:
-                    model_device = next(model.parameters()).device
-                    
-                    batch1 = torch.zeros(graph1.x.size(0), dtype=torch.long, device=model_device)
-                    batch2 = torch.zeros(graph2.x.size(0), dtype=torch.long, device=model_device)
-
-                    data1 = Data(x=graph1.x.to(model_device), 
-                               edge_index=graph1.edge_index.to(model_device), batch=batch1)
-                    data2 = Data(x=graph2.x.to(model_device), 
-                               edge_index=graph2.edge_index.to(model_device), batch=batch2)
-
+        for graph1, graph2 in self.fingerprint_pairs:
+            try:
+                model_device = next(model.parameters()).device
+                batch1 = torch.zeros(graph1.x.size(0), dtype=torch.long, device=model_device)
+                batch2 = torch.zeros(graph2.x.size(0), dtype=torch.long, device=model_device)
+                data1 = Data(x=graph1.x.to(model_device), edge_index=graph1.edge_index.to(model_device), batch=batch1)
+                data2 = Data(x=graph2.x.to(model_device), edge_index=graph2.edge_index.to(model_device), batch=batch2)
+                if require_grad:
                     similarity = model.forward(data1, data2)
-
-                    if isinstance(similarity, torch.Tensor):
-                        if similarity.dim() == 0:
-                            outputs.append(similarity.unsqueeze(0))
-                        else:
-                            outputs.append(similarity)
+                else:
+                    with torch.no_grad():
+                        similarity = model.forward(data1, data2)
+                if isinstance(similarity, torch.Tensor):
+                    if similarity.dim() == 0:
+                        outputs.append(similarity.unsqueeze(0))
                     else:
-                        outputs.append(torch.tensor([similarity], device=model_device))
-                except Exception as e:
-                    model_device = next(model.parameters()).device
-                    outputs.append(torch.tensor([0.5], device=model_device))
+                        outputs.append(similarity)
+                else:
+                    outputs.append(torch.tensor([similarity], device=model_device))
+            except Exception as e:
+                model_device = next(model.parameters()).device
+                outputs.append(torch.tensor([0.5], device=model_device))
 
         if not outputs:
             model_device = next(model.parameters()).device
@@ -511,7 +617,7 @@ class GraphMatchingFingerprint(FingerprintConstructor):
 
     def optimize_fingerprint(self, loss: torch.Tensor, alpha: float,
                            target_model: nn.Module, positive_models: List[nn.Module],
-                           negative_models: List[nn.Module]):
+                           negative_models: List[nn.Module], univerifier: Optional[nn.Module] = None):
         """Optimize graph matching fingerprints."""
         params = []
         for graph1, graph2 in self.fingerprint_pairs:
@@ -523,6 +629,30 @@ class GraphMatchingFingerprint(FingerprintConstructor):
         if params:
             optimizer = torch.optim.Adam(params, lr=alpha)
             optimizer.zero_grad()
+            if univerifier is not None:
+                outputs = []
+                labels = []
+                try:
+                    outputs.append(self.get_model_outputs(target_model, require_grad=True)); labels.append(1)
+                except:
+                    pass
+                for pos_model in random.sample(positive_models, min(8, len(positive_models))):
+                    try:
+                        outputs.append(self.get_model_outputs(pos_model, require_grad=True)); labels.append(1)
+                    except:
+                        continue
+                for neg_model in random.sample(negative_models, min(8, len(negative_models))):
+                    try:
+                        outputs.append(self.get_model_outputs(neg_model, require_grad=True)); labels.append(0)
+                    except:
+                        continue
+                if len(outputs) >= 2:
+                    min_size = min(t.size(0) for t in outputs)
+                    batch_outputs = torch.stack([t[:min_size] for t in outputs])
+                    batch_labels = torch.tensor(labels[:len(outputs)], dtype=torch.long, device=self.device)
+                    preds = univerifier(batch_outputs)
+                    current_loss = F.cross_entropy(preds, batch_labels)
+                    current_loss.backward()
             optimizer.step()
 
 

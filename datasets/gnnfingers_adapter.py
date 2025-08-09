@@ -28,10 +28,10 @@ class PyGIPDatasetAdapter:
         self.original_dataset = pygip_dataset
         self.dataset_name = getattr(pygip_dataset, 'dataset_name', 'Unknown')
         
-        # Set metadata first
-        self.num_nodes = getattr(pygip_dataset, 'node_number', 0)
-        self.num_features = getattr(pygip_dataset, 'feature_number', 0)
-        self.num_classes = getattr(pygip_dataset, 'label_number', 0)
+        # Set metadata first (use PyGIP Dataset metadata when available)
+        self.num_nodes = getattr(pygip_dataset, 'num_nodes', getattr(pygip_dataset, 'node_number', 0))
+        self.num_features = getattr(pygip_dataset, 'num_features', getattr(pygip_dataset, 'feature_number', 0))
+        self.num_classes = getattr(pygip_dataset, 'num_classes', getattr(pygip_dataset, 'label_number', 0))
         
         # Convert to PyG format for GNNFingers
         self.graph_data = self._convert_to_pyg()
@@ -43,51 +43,61 @@ class PyGIPDatasetAdapter:
     def _convert_to_pyg(self) -> Data:
         """Convert DGL graph to PyG Data format."""
         try:
-            # Get data from original dataset
+            # Prefer PyGIP's graph_data when present
+            if hasattr(self.original_dataset, 'graph_data') and self.original_dataset.graph_data is not None:
+                try:
+                    # Detect DGLGraph via duck typing to avoid hard dependency
+                    dgl_graph = self.original_dataset.graph_data
+                    # DGL graph has .edges() and .ndata
+                    if hasattr(dgl_graph, 'edges') and hasattr(dgl_graph, 'ndata'):
+                        src, dst = dgl_graph.edges()
+                        edge_index = torch.stack([src, dst], dim=0).long()
+                        x = dgl_graph.ndata.get('feat')
+                        y = dgl_graph.ndata.get('label')
+                        train_mask = dgl_graph.ndata.get('train_mask')
+                        val_mask = dgl_graph.ndata.get('val_mask')
+                        test_mask = dgl_graph.ndata.get('test_mask')
+                        if x is None:
+                            x = torch.randn(self.num_nodes, max(1, self.num_features))
+                        if y is None:
+                            y = torch.zeros(self.num_nodes).long()
+                        if train_mask is None:
+                            train_mask = torch.zeros(self.num_nodes, dtype=torch.bool)
+                        if val_mask is None:
+                            val_mask = torch.zeros(self.num_nodes, dtype=torch.bool)
+                        if test_mask is None:
+                            test_mask = torch.zeros(self.num_nodes, dtype=torch.bool)
+                        return Data(x=x, edge_index=edge_index, y=y,
+                                    train_mask=train_mask, val_mask=val_mask, test_mask=test_mask)
+                except Exception:
+                    pass
+                # If it's already a PyG Data, just use it
+                if isinstance(self.original_dataset.graph_data, Data):
+                    return self.original_dataset.graph_data
+            
+            # Legacy attribute path
             if hasattr(self.original_dataset, 'graph') and self.original_dataset.graph is not None:
-                # DGL graph conversion
                 dgl_graph = self.original_dataset.graph
-                
-                # Convert edge indices
                 src, dst = dgl_graph.edges()
                 edge_index = torch.stack([src, dst], dim=0).long()
-                
-                # Get node features
-                if hasattr(self.original_dataset, 'features') and self.original_dataset.features is not None:
-                    x = self.original_dataset.features.float()
-                else:
-                    # Create dummy features if not available
+                x = getattr(self.original_dataset, 'features', None)
+                y = getattr(self.original_dataset, 'labels', None)
+                if x is None:
                     x = torch.randn(self.num_nodes, max(1, self.num_features))
-                
-                # Get labels
-                if hasattr(self.original_dataset, 'labels') and self.original_dataset.labels is not None:
-                    y = self.original_dataset.labels.long()
                 else:
-                    # Create dummy labels if not available
+                    x = x.float()
+                if y is None:
                     y = torch.zeros(self.num_nodes).long()
-                
-                # Get masks
                 train_mask = getattr(self.original_dataset, 'train_mask', torch.zeros(self.num_nodes).bool())
                 val_mask = getattr(self.original_dataset, 'val_mask', torch.zeros(self.num_nodes).bool())
                 test_mask = getattr(self.original_dataset, 'test_mask', torch.zeros(self.num_nodes).bool())
-                
-                # Create PyG Data object
-                data = Data(
-                    x=x,
-                    edge_index=edge_index,
-                    y=y,
-                    train_mask=train_mask,
-                    val_mask=val_mask,
-                    test_mask=test_mask
-                )
-                
-                return data
-            
-            else:
-                # Fallback: create synthetic data
-                print("WARNING: No graph data found, creating synthetic data")
-                return self._create_synthetic_data()
-                
+                return Data(x=x, edge_index=edge_index, y=y,
+                            train_mask=train_mask, val_mask=val_mask, test_mask=test_mask)
+
+            # Fallback: create synthetic data
+            print("WARNING: No graph data found, creating synthetic data")
+            return self._create_synthetic_data()
+
         except Exception as e:
             print(f"WARNING: Error converting dataset ({e}), creating synthetic data")
             return self._create_synthetic_data()

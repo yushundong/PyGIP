@@ -221,6 +221,17 @@ class ProteinsGNNFingers(Dataset, GNNFingersDatasetMixin):
         if len(dataset) > 0:
             self.graph_data = dataset[0]
         
+        # Standardize labels to be zero-based longs
+        try:
+            labels = sorted({int(d.y.item()) for d in dataset if hasattr(d, 'y')})
+            label_map = {old: idx for idx, old in enumerate(labels)}
+            for d in dataset:
+                if hasattr(d, 'y') and d.y is not None:
+                    y_val = int(d.y.item())
+                    d.y = torch.tensor([label_map.get(y_val, 0)], dtype=torch.long)
+        except Exception:
+            pass
+        
         # Check and add node features if missing
         if hasattr(dataset, 'num_node_features') and dataset.num_node_features == 0:
             print("Adding node features based on node degrees...")
@@ -340,6 +351,17 @@ class AidsGNNFingers(Dataset, GNNFingersDatasetMixin):
         if len(dataset) > 0:
             self.graph_data = dataset[0]
         
+        # Standardize labels to be zero-based longs
+        try:
+            labels = sorted({int(d.y.item()) for d in dataset if hasattr(d, 'y')})
+            label_map = {old: idx for idx, old in enumerate(labels)}
+            for d in dataset:
+                if hasattr(d, 'y') and d.y is not None:
+                    y_val = int(d.y.item())
+                    d.y = torch.tensor([label_map.get(y_val, 0)], dtype=torch.long)
+        except Exception:
+            pass
+        
         # Check and add node features if missing
         if hasattr(dataset, 'num_node_features') and dataset.num_node_features == 0:
             print("Adding node features based on atom types...")
@@ -433,6 +455,17 @@ class MutagGNNFingers(Dataset, GNNFingersDatasetMixin):
         
         self.graph_dataset = dataset
         
+        # Standardize labels to be zero-based longs
+        try:
+            labels = sorted({int(d.y.item()) for d in dataset if hasattr(d, 'y')})
+            label_map = {old: idx for idx, old in enumerate(labels)}
+            for d in dataset:
+                if hasattr(d, 'y') and d.y is not None:
+                    y_val = int(d.y.item())
+                    d.y = torch.tensor([label_map.get(y_val, 0)], dtype=torch.long)
+        except Exception:
+            pass
+
         # Set metadata
         self.num_nodes = 0  # Graph-level dataset
         self.num_features = getattr(dataset, 'num_node_features', dataset[0].x.size(1) if hasattr(dataset[0], 'x') else 7)

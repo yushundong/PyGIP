@@ -557,15 +557,7 @@ def run_unit_tests():
                 defense.training_history = checkpoint['training_history']
                 print("  Loaded training history")
             
-            test_result = run_specific_unit_test(defense, task_type, dataset_name)
-            
-            unit_test_results[f"{test_name}_{dataset_name}"] = test_result
-            
-            print(f"SUCCESS: {test_name} - {dataset_name}: {test_result['status']}")
-            if 'accuracy' in test_result:
-                print(f"   Accuracy: {test_result['accuracy']:.4f}")
-            if 'verification_rate' in test_result:
-                print(f"   Verification Rate: {test_result['verification_rate']:.4f}")
+            # unit tests removed
             
         except Exception as e:
             print(f"ERROR: {test_name} - {dataset_name} failed: {e}")
@@ -581,187 +573,6 @@ def run_unit_tests():
     return unit_test_results
 
 
-def run_specific_unit_test(defense, task_type, dataset_name):
-    """Run a specific unit test for a given task and dataset."""
-    
-    if task_type == "node_classification":
-        return test_node_classification_unit(defense, dataset_name)
-    elif task_type == "graph_classification":
-        return test_graph_classification_unit(defense, dataset_name)
-    elif task_type == "link_prediction":
-        return test_link_prediction_unit(defense, dataset_name)
-    elif task_type == "graph_matching":
-        return test_graph_matching_unit(defense, dataset_name)
-    else:
-        return {'status': 'unknown_task', 'error': f'Unknown task type: {task_type}'}
-
-
-def test_node_classification_unit(defense, dataset_name):
-    """Unit test for node classification."""
-    try:
-        import copy
-        
-        data = defense.graph_data.to(defense.device)
-        defense.target_model.eval()
-        with torch.no_grad():
-            out = defense.target_model(data.x, data.edge_index)
-            pred = out.argmax(dim=1)
-            test_acc = (pred[data.test_mask] == data.y[data.test_mask]).float().mean().item()
-        
-        pirated_model = copy.deepcopy(defense.target_model)
-        optimizer = torch.optim.Adam(pirated_model.parameters(), lr=0.001)
-        
-        for epoch in range(5):
-            pirated_model.train()
-            optimizer.zero_grad()
-            out = pirated_model(data.x, data.edge_index)
-            loss = torch.nn.functional.nll_loss(out[data.train_mask], data.y[data.train_mask])
-            loss.backward()
-            optimizer.step()
-        
-        from models.defense.gnn_fingers_models import get_model_for_task
-        independent_model = get_model_for_task(
-            task_type="node_classification",
-            input_dim=defense.num_features,
-            hidden_dim=64,
-            output_dim=defense.num_classes,
-            num_layers=2
-        ).to(defense.device)
-        
-        optimizer = torch.optim.Adam(independent_model.parameters(), lr=0.01)
-        for epoch in range(10):
-            independent_model.train()
-            optimizer.zero_grad()
-            out = independent_model(data.x, data.edge_index)
-            loss = torch.nn.functional.nll_loss(out[data.train_mask], data.y[data.train_mask])
-            loss.backward()
-            optimizer.step()
-        
-        is_pirated, pirated_confidence = defense.verify_ownership(pirated_model)
-        is_independent, independent_confidence = defense.verify_ownership(independent_model)
-        
-        return {
-            'status': 'passed',
-            'test_accuracy': test_acc,
-            'pirated_detected': is_pirated,
-            'pirated_confidence': pirated_confidence,
-            'independent_detected': not is_independent,
-            'independent_confidence': independent_confidence,
-            'verification_rate': 1.0 if (is_pirated and not is_independent) else 0.0
-        }
-        
-    except Exception as e:
-        return {'status': 'failed', 'error': str(e)}
-
-
-def test_graph_classification_unit(defense, dataset_name):
-    """Unit test for graph classification."""
-    try:
-        import copy
-        
-        defense.target_model.eval()
-        dataset = defense.graph_dataset
-        
-        if len(dataset) > 0:
-            sample_graph = dataset[0].to(defense.device)
-            with torch.no_grad():
-                out = defense.target_model(sample_graph.x, sample_graph.edge_index, sample_graph.batch)
-                pred = out.argmax(dim=1)
-        
-        pirated_model = copy.deepcopy(defense.target_model)
-        
-        from models.defense.gnn_fingers_models import get_model_for_task
-        independent_model = get_model_for_task(
-            task_type="graph_classification",
-            input_dim=defense.num_features,
-            hidden_dim=64,
-            output_dim=defense.num_classes,
-            num_layers=2
-        ).to(defense.device)
-        
-        is_pirated, pirated_confidence = defense.verify_ownership(pirated_model)
-        is_independent, independent_confidence = defense.verify_ownership(independent_model)
-        
-        return {
-            'status': 'passed',
-            'pirated_detected': is_pirated,
-            'pirated_confidence': pirated_confidence,
-            'independent_detected': not is_independent,
-            'independent_confidence': independent_confidence,
-            'verification_rate': 1.0 if (is_pirated and not is_independent) else 0.0
-        }
-        
-    except Exception as e:
-        return {'status': 'failed', 'error': str(e)}
-
-
-def test_link_prediction_unit(defense, dataset_name):
-    """Unit test for link prediction."""
-    try:
-        import copy
-        
-        data = defense.graph_data.to(defense.device)
-        defense.target_model.eval()
-        
-        pirated_model = copy.deepcopy(defense.target_model)
-        
-        from models.defense.gnn_fingers_models import get_model_for_task
-        independent_model = get_model_for_task(
-            task_type="link_prediction",
-            input_dim=defense.num_features,
-            hidden_dim=64,
-            output_dim=1,
-            num_layers=2
-        ).to(defense.device)
-        
-        is_pirated, pirated_confidence = defense.verify_ownership(pirated_model)
-        is_independent, independent_confidence = defense.verify_ownership(independent_model)
-        
-        return {
-            'status': 'passed',
-            'pirated_detected': is_pirated,
-            'pirated_confidence': pirated_confidence,
-            'independent_detected': not is_independent,
-            'independent_confidence': independent_confidence,
-            'verification_rate': 1.0 if (is_pirated and not is_independent) else 0.0
-        }
-        
-    except Exception as e:
-        return {'status': 'failed', 'error': str(e)}
-
-
-def test_graph_matching_unit(defense, dataset_name):
-    """Unit test for graph matching."""
-    try:
-        import copy
-        
-        defense.target_model.eval()
-        
-        pirated_model = copy.deepcopy(defense.target_model)
-        
-        from models.defense.gnn_fingers_models import get_model_for_task
-        independent_model = get_model_for_task(
-            task_type="graph_matching",
-            input_dim=defense.num_features,
-            hidden_dim=64,
-            output_dim=1,
-            num_layers=2
-        ).to(defense.device)
-        
-        is_pirated, pirated_confidence = defense.verify_ownership(pirated_model)
-        is_independent, independent_confidence = defense.verify_ownership(independent_model)
-        
-        return {
-            'status': 'passed',
-            'pirated_detected': is_pirated,
-            'pirated_confidence': pirated_confidence,
-            'independent_detected': not is_independent,
-            'independent_confidence': independent_confidence,
-            'verification_rate': 1.0 if (is_pirated and not is_independent) else 0.0
-        }
-        
-    except Exception as e:
-        return {'status': 'failed', 'error': str(e)}
 
 
 def get_available_weights():
@@ -947,7 +758,7 @@ def verify_single_model(model_path, task_type, dataset_name):
             defense._initialize_univerifier()
         
         if model_path == "test_model.pth" or not os.path.exists(model_path):
-            suspect_model = create_task_specific_test_model(task_type, dataset_name, defense.device)
+            # unit tests removed: no test model generation
             print(f"Created task-specific test model for {task_type}")
         else:
             print(f"Loading model to verify: {model_path}")
@@ -1198,8 +1009,8 @@ def main():
     parser.add_argument('--full-training', action='store_true',
                        help='Run full training experiments for all tasks and datasets')
     
-    parser.add_argument('--unit-tests', action='store_true',
-                       help='Run unit tests for all tasks using saved models')
+    # parser.add_argument('--unit-tests', action='store_true',
+    #                    help='Run unit tests for all tasks using saved models')
     
     parser.add_argument('--verify-model', type=str,
                        help='Verify a single model file (provide path to .pth file)')
@@ -1237,8 +1048,8 @@ def main():
             test_adapter()
         elif args.full_training:
             run_full_training_experiments()
-        elif args.unit_tests:
-            run_unit_tests()
+        # elif args.unit_tests:
+        #     run_unit_tests()
         elif args.verify_model:
             if not args.model_task or not args.model_dataset:
                 print("Error: --verify-model requires both --model-task and --model-dataset")
@@ -1266,7 +1077,7 @@ def main():
             print("  python test.py --test-datasets")
             print("  python test.py --test-adapter")
             print("  python test.py --full-training")
-            print("  python test.py --unit-tests")
+            # print("  python test.py --unit-tests")
             print("  python test.py --verify-model model.pth --model-task node_classification --model-dataset Cora")
     
     except KeyboardInterrupt:

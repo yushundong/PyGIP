@@ -270,20 +270,36 @@ def create_obfuscated_models(target_model: nn.Module, dataset, task_type: str,
     for method, count in methods:
         for i in range(count):
             try:
+                # Prepare task-specific training data handle
+                if task_type == "graph_classification":
+                    data_handle = dataset  # provides get_dataloader
+                elif task_type == "graph_matching":
+                    # Build a small set of pairs for obfuscation
+                    try:
+                        pairs = dataset.create_graph_pairs(num_pairs=400)
+                    except Exception:
+                        pairs = []
+                    data_handle = pairs
+                else:
+                    data_handle = dataset.graph_data
+
                 if method == "fine_tuning":
                     model = ModelObfuscator.fine_tune_model(
-                        target_model, dataset.graph_data, task_type, epochs=20, device=device
+                        target_model, data_handle, task_type, epochs=20, device=device
                     )
                 elif method == "partial_retraining":
                     model = ModelObfuscator.partial_retrain_model(
-                        target_model, dataset.graph_data, task_type, 
+                        target_model, data_handle, task_type, 
                         layers_to_retrain=random.choice([1, 2]), epochs=20, device=device
                     )
                 elif method == "distillation":
+                    # Determine output dimension for tasks lacking explicit num_classes
+                    out_dim = dataset.num_classes if hasattr(dataset, 'num_classes') and dataset.num_classes else (1 if task_type in ["link_prediction", "graph_matching"] else 2)
                     model = ModelObfuscator.distill_model(
-                        target_model, dataset.graph_data, task_type,
-                        dataset.num_features, random.choice([32, 64, 96]), 
-                        dataset.num_classes, epochs=100, device=device
+                        target_model, data_handle, task_type,
+                        dataset.num_features if hasattr(dataset, 'num_features') else target_model.convs[0].in_channels,
+                        random.choice([32, 64, 96]), 
+                        out_dim, epochs=100, device=device
                     )
                 else:
                     continue

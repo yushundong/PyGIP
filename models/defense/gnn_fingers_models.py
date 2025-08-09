@@ -7,6 +7,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import GCNConv, global_mean_pool, global_add_pool
 from typing import List, Optional, Union
+from torch_geometric.utils import negative_sampling
+import random
 import copy
 
 
@@ -254,6 +256,72 @@ class ModelObfuscator:
                 loss = F.nll_loss(out[data.train_mask], data.y[data.train_mask].to(device))
                 loss.backward()
                 optimizer.step()
+        elif task_type == "graph_classification":
+            # Expect data to be a dataset-like object providing dataloaders
+            try:
+                train_loader = data.get_dataloader(split="train", batch_size=32, shuffle=True)
+            except Exception:
+                return fine_tuned_model
+            for epoch in range(epochs):
+                for batch in train_loader:
+                    batch = batch.to(device)
+                    optimizer.zero_grad()
+                    out = fine_tuned_model(batch.x, batch.edge_index, batch.batch)
+                    loss = F.nll_loss(out, batch.y.view(-1).long())
+                    loss.backward()
+                    optimizer.step()
+        elif task_type == "link_prediction":
+            # Expect data to be PyG Data with edge splits
+            if not hasattr(data, 'train_pos_edge_index') or data.train_pos_edge_index is None:
+                return fine_tuned_model
+            for epoch in range(epochs):
+                # Sample negatives each epoch
+                try:
+                    neg_edge_index = negative_sampling(
+                        edge_index=data.train_pos_edge_index.to(device),
+                        num_nodes=data.x.size(0),
+                        num_neg_samples=min(1000, data.train_pos_edge_index.size(1)),
+                        method='sparse'
+                    )
+                except Exception:
+                    from torch_geometric.utils import negative_sampling as neg_samp
+                    neg_edge_index = neg_samp(
+                        edge_index=data.train_pos_edge_index.to(device),
+                        num_nodes=data.x.size(0),
+                        num_neg_samples=min(1000, data.train_pos_edge_index.size(1))
+                    )
+                batch_size = 256
+                pos_edges = data.train_pos_edge_index.t()
+                neg_edges = neg_edge_index.t()
+                num_batches = min(pos_edges.size(0), neg_edges.size(0)) // batch_size
+                for i in range(min(num_batches, 5)):
+                    start = i * batch_size
+                    end = (i + 1) * batch_size
+                    optimizer.zero_grad()
+                    pos_batch = pos_edges[start:end].t().to(device)
+                    neg_batch = neg_edges[start:end].t().to(device)
+                    pos_pred = fine_tuned_model(data.x.to(device), data.train_pos_edge_index.to(device), pos_batch)
+                    neg_pred = fine_tuned_model(data.x.to(device), data.train_pos_edge_index.to(device), neg_batch)
+                    pos_loss = F.binary_cross_entropy(pos_pred, torch.ones_like(pos_pred))
+                    neg_loss = F.binary_cross_entropy(neg_pred, torch.zeros_like(neg_pred))
+                    loss = pos_loss + neg_loss
+                    loss.backward()
+                    optimizer.step()
+        elif task_type == "graph_matching":
+            # Expect data to be a list of pairs: [((g1,g2), sim), ...]
+            train_pairs = data
+            for epoch in range(epochs):
+                random.shuffle(train_pairs)
+                for (graph1, graph2), sim in train_pairs[:50]:
+                    optimizer.zero_grad()
+                    batch1 = torch.zeros(graph1.x.size(0), dtype=torch.long, device=device)
+                    batch2 = torch.zeros(graph2.x.size(0), dtype=torch.long, device=device)
+                    d1 = type(graph1)(x=graph1.x.to(device), edge_index=graph1.edge_index.to(device), batch=batch1)
+                    d2 = type(graph2)(x=graph2.x.to(device), edge_index=graph2.edge_index.to(device), batch=batch2)
+                    pred = fine_tuned_model(d1, d2)
+                    loss = F.mse_loss(pred.unsqueeze(0), torch.tensor([sim], dtype=torch.float, device=device))
+                    loss.backward()
+                    optimizer.step()
         
         # Add other task types as needed
         
@@ -283,6 +351,11 @@ class ModelObfuscator:
                 for param in retrained_model.convs[layer_idx].parameters():
                     param.requires_grad = True
 
+        # Also unfreeze classifier for graph classification
+        if task_type == "graph_classification" and hasattr(retrained_model, 'classifier'):
+            for p in retrained_model.classifier.parameters():
+                p.requires_grad = True
+
         optimizer = torch.optim.Adam(
             filter(lambda p: p.requires_grad, retrained_model.parameters()), 
             lr=lr
@@ -297,6 +370,54 @@ class ModelObfuscator:
                 loss = F.nll_loss(out[data.train_mask], data.y[data.train_mask].to(device))
                 loss.backward()
                 optimizer.step()
+        elif task_type == "graph_classification":
+            try:
+                train_loader = data.get_dataloader(split="train", batch_size=32, shuffle=True)
+            except Exception:
+                return retrained_model
+            for epoch in range(epochs):
+                for batch in train_loader:
+                    batch = batch.to(device)
+                    optimizer.zero_grad()
+                    out = retrained_model(batch.x, batch.edge_index, batch.batch)
+                    loss = F.nll_loss(out, batch.y.view(-1).long())
+                    loss.backward()
+                    optimizer.step()
+        elif task_type == "link_prediction":
+            if not hasattr(data, 'train_pos_edge_index') or data.train_pos_edge_index is None:
+                return retrained_model
+            for epoch in range(epochs):
+                try:
+                    neg_edge_index = negative_sampling(
+                        edge_index=data.train_pos_edge_index.to(device),
+                        num_nodes=data.x.size(0),
+                        num_neg_samples=min(1000, data.train_pos_edge_index.size(1)),
+                        method='sparse'
+                    )
+                except Exception:
+                    from torch_geometric.utils import negative_sampling as neg_samp
+                    neg_edge_index = neg_samp(
+                        edge_index=data.train_pos_edge_index.to(device),
+                        num_nodes=data.x.size(0),
+                        num_neg_samples=min(1000, data.train_pos_edge_index.size(1))
+                    )
+                batch_size = 256
+                pos_edges = data.train_pos_edge_index.t()
+                neg_edges = neg_edge_index.t()
+                num_batches = min(pos_edges.size(0), neg_edges.size(0)) // batch_size
+                for i in range(min(num_batches, 5)):
+                    start = i * batch_size
+                    end = (i + 1) * batch_size
+                    optimizer.zero_grad()
+                    pos_batch = pos_edges[start:end].t().to(device)
+                    neg_batch = neg_edges[start:end].t().to(device)
+                    pos_pred = retrained_model(data.x.to(device), data.train_pos_edge_index.to(device), pos_batch)
+                    neg_pred = retrained_model(data.x.to(device), data.train_pos_edge_index.to(device), neg_batch)
+                    pos_loss = F.binary_cross_entropy(pos_pred, torch.ones_like(pos_pred))
+                    neg_loss = F.binary_cross_entropy(neg_pred, torch.zeros_like(neg_pred))
+                    loss = pos_loss + neg_loss
+                    loss.backward()
+                    optimizer.step()
 
         return retrained_model
     
@@ -338,5 +459,62 @@ class ModelObfuscator:
 
                 total_loss.backward()
                 optimizer.step()
+        elif task_type == "graph_classification":
+            try:
+                train_loader = data.get_dataloader(split="train", batch_size=32, shuffle=True)
+            except Exception:
+                return student_model
+            for epoch in range(epochs):
+                for batch in train_loader:
+                    batch = batch.to(device)
+                    optimizer.zero_grad()
+                    with torch.no_grad():
+                        teacher_outputs = teacher_model(batch.x, batch.edge_index, batch.batch)
+                    student_outputs = student_model(batch.x, batch.edge_index, batch.batch)
+                    teacher_soft = F.softmax(teacher_outputs / temperature, dim=1)
+                    student_soft = F.log_softmax(student_outputs / temperature, dim=1)
+                    distill_loss = F.kl_div(student_soft, teacher_soft, reduction='batchmean')
+                    hard_loss = F.nll_loss(student_outputs, batch.y.view(-1).long())
+                    total_loss = 0.7 * distill_loss + 0.3 * hard_loss
+                    total_loss.backward()
+                    optimizer.step()
+        elif task_type == "link_prediction":
+            if not hasattr(data, 'train_pos_edge_index') or data.train_pos_edge_index is None:
+                return student_model
+            for epoch in range(epochs):
+                try:
+                    neg_edge_index = negative_sampling(
+                        edge_index=data.train_pos_edge_index.to(device),
+                        num_nodes=data.x.size(0),
+                        num_neg_samples=min(800, data.train_pos_edge_index.size(1)),
+                        method='sparse'
+                    )
+                except Exception:
+                    from torch_geometric.utils import negative_sampling as neg_samp
+                    neg_edge_index = neg_samp(
+                        edge_index=data.train_pos_edge_index.to(device),
+                        num_nodes=data.x.size(0),
+                        num_neg_samples=min(800, data.train_pos_edge_index.size(1))
+                    )
+                batch_size = 256
+                pos_edges = data.train_pos_edge_index.t()
+                neg_edges = neg_edge_index.t()
+                num_batches = min(pos_edges.size(0), neg_edges.size(0)) // batch_size
+                for i in range(min(num_batches, 5)):
+                    start = i * batch_size
+                    end = (i + 1) * batch_size
+                    optimizer.zero_grad()
+                    pos_batch = pos_edges[start:end].t().to(device)
+                    neg_batch = neg_edges[start:end].t().to(device)
+                    with torch.no_grad():
+                        teacher_pos = teacher_model(data.x.to(device), data.train_pos_edge_index.to(device), pos_batch)
+                        teacher_neg = teacher_model(data.x.to(device), data.train_pos_edge_index.to(device), neg_batch)
+                    student_pos = student_model(data.x.to(device), data.train_pos_edge_index.to(device), pos_batch)
+                    student_neg = student_model(data.x.to(device), data.train_pos_edge_index.to(device), neg_batch)
+                    distill_loss = (F.mse_loss(student_pos, teacher_pos.detach()) + F.mse_loss(student_neg, teacher_neg.detach())) / 2
+                    hard_loss = (F.binary_cross_entropy(student_pos, torch.ones_like(student_pos)) + F.binary_cross_entropy(student_neg, torch.zeros_like(student_neg))) / 2
+                    total_loss = 0.7 * distill_loss + 0.3 * hard_loss
+                    total_loss.backward()
+                    optimizer.step()
 
         return student_model
