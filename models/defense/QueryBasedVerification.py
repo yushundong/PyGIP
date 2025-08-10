@@ -15,15 +15,12 @@ from itertools import combinations
 from tqdm import tqdm
 
 
-
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-
 class QueryBasedVerificationDefense(BaseDefense):
+    supported_api_types = {"dgl"}
+    supported_datasets = {}
     def __init__(self, dataset, attack_node_fraction, model_path=None):
         super().__init__(dataset, attack_node_fraction)
         self.model_path = model_path
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
     
@@ -64,7 +61,7 @@ class QueryBasedVerificationDefense(BaseDefense):
 
             poisoned_dataset = copy.deepcopy(self.dataset)
             if 'graph' in attack_info:
-                poisoned_dataset.graph = attack_info['graph']
+                poisoned_dataset.graph_data = attack_info['graph']
             acc_poisoned = self._evaluate_accuracy(poisoned_model, poisoned_dataset)
 
 
@@ -105,6 +102,9 @@ class QueryBasedVerificationDefense(BaseDefense):
         }
 
 
+    def _get_features(self):
+        return self.graph_data.ndata['feat'] if hasattr(self.graph_data, 'ndata') else self.graph_data.x
+
 
     def _train_target_model(self, epochs=200):
         """
@@ -119,23 +119,23 @@ class QueryBasedVerificationDefense(BaseDefense):
         model = GCN(
         feature_number=self.dataset.feature_number,
         label_number=self.dataset.label_number
-        ).to(device)
-        print(f"Training target model on device: {device} ...")
+        ).to(self.device)
+        print(f"Training target model on device: {self.device} ...")
 
         optimizer = Adam(model.parameters(), lr=0.02)
         loss_fn = torch.nn.NLLLoss()
 
-        features = self.dataset.features.to(device)
-        labels = self.dataset.labels.to(device)
-        train_mask = self.dataset.train_mask.to(device)
+        features = self._get_features().to(self.device)
+        labels = self.dataset.labels.to(self.device)
+        train_mask = self.dataset.train_mask.to(self.device)
         val_mask = getattr(self.dataset, "val_mask", None)
         if val_mask is None:
             val_mask = self.dataset.test_mask
-        val_mask = val_mask.to(device)
+        val_mask = val_mask.to(self.device)
 
         for epoch in range(epochs):
             model.train()
-            logits = model(self.dataset.graph.to(device), features)
+            logits = model(self.graph_data.to(self.device), features)
             log_probs = F.log_softmax(logits, dim=1)
             loss = loss_fn(log_probs[train_mask], labels[train_mask])
 
@@ -146,7 +146,7 @@ class QueryBasedVerificationDefense(BaseDefense):
             if (epoch + 1) % 10 == 0 or epoch == 0:
                 model.eval()
                 with torch.no_grad():
-                    val_logits = model(self.dataset.graph.to(device), features)
+                    val_logits = model(self.graph_data.to(self.device), features)
                     val_log_probs = F.log_softmax(val_logits, dim=1)
                     val_pred = val_log_probs[val_mask].max(1)[1]
                     val_acc = (val_pred == labels[val_mask]).float().mean().item()
@@ -181,12 +181,12 @@ class QueryBasedVerificationDefense(BaseDefense):
             )
             fingerprints = generator.generate_fingerprints(k=k, method=knowledge)
 
-            unified_fingerprints = [(self.dataset.graph, node_id, label) for (node_id, label) in fingerprints]
+            unified_fingerprints = [(self.graph_data, node_id, label) for (node_id, label) in fingerprints]
 
         elif mode == 'inductive':
             generator = InductiveFingerprintGenerator(
                 model=model,
-                shadow_graph=self.dataset.graph,
+                shadow_graph=self.dataset.graph_data,
                 knowledge=knowledge,
                 candidate_fraction=kwargs.get('candidate_fraction', 0.3),
                 num_fingerprints=k,
@@ -272,13 +272,13 @@ class QueryBasedVerificationDefense(BaseDefense):
             return poisoned_model, {'type': 'random_poison', 'graph': perturbed_graph}
 
         elif attack_type == 'mettack':
-            num_edges = self.dataset.graph.num_edges()
+            num_edges = self.graph_data.num_edges()
             poison_frac = kwargs.get('poison_frac', 0.05)
             n_perturbations = int(poison_frac * num_edges)
 
             helper = MettackHelper(
-                graph=self.dataset.graph,
-                features=self.dataset.features,
+                graph=self.graph_data,
+                features=self._get_features(),
                 labels=self.dataset.labels,
                 train_mask=self.dataset.train_mask,
                 val_mask=getattr(self.dataset, 'val_mask', None),
@@ -317,7 +317,7 @@ class QueryBasedVerificationDefense(BaseDefense):
             random.seed(random_seed)
             torch.manual_seed(random_seed)
 
-        poisoned_graph = copy.deepcopy(self.dataset.graph)
+        poisoned_graph = copy.deepcopy(self.graph_data)
         num_nodes = poisoned_graph.num_nodes()
         num_poisoned_nodes = int(node_fraction * num_nodes)
         poisoned_nodes = random.sample(range(num_nodes), num_poisoned_nodes)
@@ -354,7 +354,7 @@ class QueryBasedVerificationDefense(BaseDefense):
             model: Trained GCN model
         """
         dataset_poisoned = copy.deepcopy(self.dataset)
-        dataset_poisoned.graph = poisoned_graph
+        dataset_poisoned.graph_data = poisoned_graph
 
         defense = QueryBasedVerificationDefense(dataset=dataset_poisoned, attack_node_fraction=0.1)
         model = defense._train_target_model(epochs=epochs)
@@ -368,18 +368,17 @@ class QueryBasedVerificationDefense(BaseDefense):
         Args:
             model: Trained GCN model
             dataset: Dataset object (provides features, labels, test_mask, graph)
-            device: 'cpu' or 'cuda'
 
         Returns:
             accuracy: float (test accuracy, 0-1)
         """
         model.eval()
-        features = dataset.features.to(device)
-        labels = dataset.labels.to(device)
+        features = self._get_features().to(self.device)
+        labels = dataset.labels.to(self.device)
         test_mask = dataset.test_mask
 
         with torch.no_grad():
-            logits = model(dataset.graph.to(device), features)
+            logits = model(dataset.graph_data.to(self.device), features)
             pred = logits.argmax(dim=1)
             correct = (pred[test_mask] == labels[test_mask]).float()
             accuracy = correct.sum().item() / test_mask.sum().item()
@@ -433,19 +432,21 @@ class QueryBasedVerificationDefense(BaseDefense):
 
 class TransductiveFingerprintGenerator:
     def __init__(self, model, dataset, candidate_fraction=0.3, random_seed=None, device='cpu', randomize=True):
-        self.model = model.to(device)
+        self.device = torch.device(device)
+        self.model = model.to(self.device)
         self.dataset = dataset
+        self.graph_data = dataset.graph_data
         self.candidate_fraction = candidate_fraction
         self.random_seed = random_seed
-        self.device = device
         self.randomize = randomize
 
+    def _get_features(self):
+        """Backend-agnostic feature getter (DGL or PyG)."""
+        return self.graph_data.ndata['feat'] if hasattr(self.graph_data, 'ndata') else self.graph_data.x
+
     def get_candidate_nodes(self):
-        """
-        Step 1: Randomly sample a subset of nodes as candidates (for robustness).
-        Step 2: Return that set for scoring.
-        """
-        all_nodes = torch.arange(self.dataset.graph.num_nodes())
+        """Randomly sample a subset of nodes as candidates."""
+        all_nodes = torch.arange(self.graph_data.num_nodes())
         num_candidates = max(1, int(len(all_nodes) * self.candidate_fraction))
 
         if self.randomize and self.candidate_fraction < 1.0:
@@ -453,18 +454,15 @@ class TransductiveFingerprintGenerator:
             if self.random_seed is not None:
                 generator.manual_seed(self.random_seed)
             idx = torch.randperm(len(all_nodes), generator=generator)[:num_candidates]
-            candidates = all_nodes[idx]
-        else:
-            candidates = all_nodes
-
-        return candidates
-
-
+            return all_nodes[idx]
+        return all_nodes
 
     def compute_fingerprint_scores_full(self, candidate_nodes):
+        """Full-knowledge fingerprint scores (gradient-based)."""
         self.model.eval()
         scores = []
-        logits = self.model(self.dataset.graph.to(self.device), self.dataset.features.to(self.device))
+        x = self._get_features().to(self.device)
+        logits = self.model(self.graph_data.to(self.device), x)
 
         for node in candidate_nodes:
             self.model.zero_grad()
@@ -475,26 +473,22 @@ class TransductiveFingerprintGenerator:
             grad_norm = sum((p.grad ** 2).sum().item() for p in self.model.parameters() if p.grad is not None)
             scores.append(grad_norm)
 
-        scores_tensor = torch.tensor(scores, device=self.device)
-        return scores_tensor
-
+        return torch.tensor(scores, device=self.device)
 
     def compute_fingerprint_scores_limited(self, candidate_nodes):
+        """Limited-knowledge fingerprint scores (confidence margin)."""
         self.model.eval()
+        x = self._get_features().to(self.device)
         with torch.no_grad():
-            logits = self.model(self.dataset.graph.to(self.device), self.dataset.features.to(self.device))
+            logits = self.model(self.graph_data.to(self.device), x)
             probs = F.softmax(logits, dim=1)
             labels = probs.argmax(dim=1)
             scores = 1.0 - probs[candidate_nodes, labels[candidate_nodes]]
-
         return scores
 
-
     def select_top_fingerprints(self, scores, candidate_nodes, k, method='full'):
-        """
-        Selects top-k fingerprint nodes after filtering out extreme score outliers.
-        """
-        q = 0.99 if method == 'full' else 1.0  
+        """Selects top-k fingerprint nodes after filtering out extreme score outliers."""
+        q = 0.99 if method == 'full' else 1.0
         threshold = torch.quantile(scores, q)
         mask = scores <= threshold
 
@@ -505,17 +499,14 @@ class TransductiveFingerprintGenerator:
             k = filtered_scores.size(0)
 
         topk = torch.topk(filtered_scores, k)
-        selected_nodes = filtered_candidates[topk.indices]
-        selected_scores = topk.values
-
-        return selected_nodes, selected_scores
-
+        return filtered_candidates[topk.indices], topk.values
 
     def generate_fingerprints(self, k=5, method='full'):
         candidate_nodes = self.get_candidate_nodes().to(self.device)
+        x = self._get_features().to(self.device)
 
         with torch.no_grad():
-            logits = self.model(self.dataset.graph.to(self.device), self.dataset.features.to(self.device))
+            logits = self.model(self.graph_data.to(self.device), x)
             labels = logits.argmax(dim=1)
 
         if method == 'full':
@@ -528,18 +519,14 @@ class TransductiveFingerprintGenerator:
         class_to_candidates = {}
         for i, node in enumerate(candidate_nodes):
             cls = int(labels[node])
-            if cls not in class_to_candidates:
-                class_to_candidates[cls] = []
-            class_to_candidates[cls].append((node.item(), scores[i].item()))
+            class_to_candidates.setdefault(cls, []).append((node.item(), scores[i].item()))
 
         rng = random.Random(self.random_seed)
-
         class_list = list(class_to_candidates.keys())
         rng.shuffle(class_list)
 
         fingerprints = []
         for cls in class_list:
-
             class_nodes = sorted(class_to_candidates[cls], key=lambda x: x[1], reverse=True)
             top_node = class_nodes[0][0]
             fingerprints.append((top_node, cls))
@@ -547,48 +534,26 @@ class TransductiveFingerprintGenerator:
                 break
 
         if len(fingerprints) < k:
-
             fingerprint_nodes, _ = self.select_top_fingerprints(scores, candidate_nodes, k, method=method)
             fingerprints = [(int(n), int(labels[n])) for n in fingerprint_nodes]
-
 
         return fingerprints
 
 
-
 class InductiveFingerprintGenerator:
-    """
-    Implements inductive fingerprint generation for both Full ('full') and Limited ('limited')
-    knowledge settings, as described in Wu et al. (2023) Sections 4.2, 4.2.2, and 5.2.
-    Supports randomized candidate selection for robustness against adaptive attackers.
-    """
-
-    def __init__(self, model, shadow_graph, knowledge='limited',
+    def __init__(self, model, dataset, shadow_graph=None, knowledge='limited',
                  candidate_fraction=0.3, num_fingerprints=5,
                  randomize=True, random_seed=None, device='cpu', 
                  perturb_fingerprints=False, perturb_budget=5):
-        """
-        Args:
-            model: GNN model to be fingerprinted.
-            shadow_graph: PyG/DGL graph object for querying (shadow/inference graph).
-            knowledge: 'full' for gradient-based (requires model weights), 'limited' for output-based.
-            candidate_fraction: Fraction of nodes considered as candidates for fingerprinting.
-            num_fingerprints: Number of fingerprint nodes to select.
-            randomize: Whether to randomly sample candidate nodes (default True).
-            random_seed: Optional seed for reproducibility.
-            device: Torch device string (e.g., 'cpu' or 'cuda').
-            perturb_fingerprints: Whether to greedily perturb fingerprint nodes' features/edges to increase sensitivity.
-            perturb_budget: Max number of perturbation steps per fingerprint node (default 5).
-       
-        """
-        self.model = model.to(device)
-        self.shadow_graph = shadow_graph
+        self.device = torch.device(device) 
+        self.model = model.to(self.device)
+        self.dataset = dataset
+        self.shadow_graph = shadow_graph if shadow_graph is not None else dataset.graph_data
         self.knowledge = knowledge
         self.candidate_fraction = candidate_fraction
         self.num_fingerprints = num_fingerprints
         self.randomize = randomize
         self.random_seed = random_seed
-        self.device = device
         self.perturb_fingerprints = perturb_fingerprints
         self.perturb_budget = perturb_budget
 
@@ -596,11 +561,12 @@ class InductiveFingerprintGenerator:
             torch.manual_seed(self.random_seed)
             random.seed(self.random_seed)
 
+
+    def _get_features(self):
+        return self.shadow_graph.ndata['feat'] if hasattr(self.shadow_graph, 'ndata') else self.shadow_graph.x
+
+
     def get_candidate_nodes(self):
-        """
-        Step 1: Randomly sample a subset of nodes as candidates (for robustness).
-        Step 2: Score and select top-k from this set.
-        """
         all_nodes = torch.arange(self.shadow_graph.num_nodes())
         num_candidates = max(1, int(len(all_nodes) * self.candidate_fraction))
 
@@ -616,27 +582,25 @@ class InductiveFingerprintGenerator:
         return candidates
 
 
-    def compute_fingerprint_score(self, node_idx):
+    def compute_fingerprint_score(self, node_idx, graph_override=None):
         """
         Computes the fingerprint score for a given node according to knowledge mode.
-        Returns: float: Sensitivity score for the node.
+        If graph_override is provided, scoring is done on that graph instead of shadow_graph.
         """
-        features = self.shadow_graph.ndata['feat'] if hasattr(self.shadow_graph, 'ndata') else self.shadow_graph.x
-        features = features.to(self.device)
+        graph = graph_override if graph_override is not None else self.shadow_graph
+        x = (graph.ndata['feat'] if hasattr(graph, 'ndata') else graph.x).to(self.device)
         self.model.eval()
 
         if self.knowledge == 'limited':
             with torch.no_grad():
-                logits = self.model(self.shadow_graph.to(self.device), features)
+                logits = self.model(graph.to(self.device), x)
                 probs = torch.softmax(logits[node_idx], dim=0)
                 pred_class = probs.argmax().item()
-                score = 1 - probs[pred_class].item()
-            return score
+                return 1 - probs[pred_class].item()
 
         elif self.knowledge == 'full':
-
-            features.requires_grad_(True)
-            logits = self.model(self.shadow_graph.to(self.device), features)
+            x.requires_grad_(True)
+            logits = self.model(graph.to(self.device), x)
             pred = logits[node_idx]
             label = pred.argmax().item()
 
@@ -647,12 +611,11 @@ class InductiveFingerprintGenerator:
             )
             loss.backward(retain_graph=True)
 
-            grad = features.grad[node_idx]
+            grad = x.grad[node_idx]
             grad_norm_sq = (grad ** 2).sum().item()
-            features.requires_grad_(False)
-            features.grad = None  
+            x.requires_grad_(False)
+            x.grad = None
             return grad_norm_sq
-
         else:
             raise ValueError("knowledge must be 'limited' or 'full'")
 
@@ -675,25 +638,15 @@ class InductiveFingerprintGenerator:
         selected = [idx for (_, idx) in scores[:self.num_fingerprints]]
         return selected
 
+
     def save_fingerprint_tuples(self, node_indices):
-        """
-        Step 4: Creates the final fingerprint set, storing the expected label for each
-        selected fingerprint node. Tuples (graph, node_id, label) will be used
-        during online verification.
-
-        Args:
-            node_indices: List[int] of selected fingerprint node indices.
-
-        Returns:
-            List[Tuple[graph, node_id, label]]: The fingerprints for online checking.
-        """
         self.model.eval()
+        x = self._get_features().to(self.device)
         with torch.no_grad():
-            features = self.shadow_graph.ndata['feat'] if hasattr(self.shadow_graph, 'ndata') else self.shadow_graph.x
-            logits = self.model(self.shadow_graph.to(self.device), features.to(self.device))
+            logits = self.model(self.shadow_graph.to(self.device), x)
             labels = logits.argmax(dim=1).cpu().numpy()
-            fingerprints = [(self.shadow_graph, int(idx), int(labels[idx])) for idx in node_indices]
-        return fingerprints
+            return [(self.shadow_graph, int(idx), int(labels[idx])) for idx in node_indices]
+
 
     def generate_fingerprints(self, method='full'):
             """
@@ -757,8 +710,7 @@ class InductiveFingerprintGenerator:
             List[int]: Indices of perturbed fingerprint nodes (features in shadow_graph are updated in-place).
         """
         epsilon = 0.01 
-        features = self.shadow_graph.ndata['feat'] if hasattr(self.shadow_graph, 'ndata') else self.shadow_graph.x
-        features = features.clone().detach().to(self.device)
+        features = self._get_features().clone().detach().to(self.device)
         self.shadow_graph = self.shadow_graph.to(self.device)
 
         for idx in node_indices:
@@ -766,12 +718,13 @@ class InductiveFingerprintGenerator:
             improved = True
             while num_tries < self.perturb_budget and improved:
                 improved = False
-                current_score = self.compute_fingerprint_score(idx)
+                current_score = self.compute_fingerprint_score(idx, graph_override=self.shadow_graph)
 
                 self.model.eval()
                 with torch.no_grad():
                     logits = self.model(self.shadow_graph, features)
                     pred_label = logits[idx].argmax().item()
+
                 original_features = features[idx].clone()
                 for dim in range(features.shape[1]):
                     for direction in [+1, -1]:
@@ -781,7 +734,7 @@ class InductiveFingerprintGenerator:
                         with torch.no_grad():
                             logits_new = self.model(self.shadow_graph, features)
                             new_pred_label = logits_new[idx].argmax().item()
-                        new_score = self.compute_fingerprint_score(idx)
+                        new_score = self.compute_fingerprint_score(idx, graph_override=self.shadow_graph)
 
                         if new_pred_label == pred_label and new_score > current_score:
                             current_score = new_score
@@ -789,6 +742,7 @@ class InductiveFingerprintGenerator:
                             num_tries += 1
                         else:
                             features[idx][dim] = original_features[dim]  
+
                         if num_tries >= self.perturb_budget:
                             break
                     if num_tries >= self.perturb_budget:
@@ -799,7 +753,6 @@ class InductiveFingerprintGenerator:
         else:
             self.shadow_graph.x = features
         return node_indices
-
 
     def greedy_edge_perturbation(self, node_idx, perturb_budget=5, knowledge='full'):
         """
@@ -823,29 +776,25 @@ class InductiveFingerprintGenerator:
         Full knowledge edge perturbation (Inductive-F). 
         Increases fingerprint score using model gradients while preserving prediction.
         """
-        import copy
-        from torch_geometric.utils import to_networkx, from_networkx
-        import torch
 
         g_nx = to_networkx(self.shadow_graph.to('cpu'), to_undirected=True)
-        x = self.dataset.features.to(self.device)
+        x = self._get_features().to(self.device)
         self.model.eval()
 
         with torch.no_grad():
             original_pred = self.model(self.shadow_graph.to(self.device), x)[node_idx].argmax().item()
 
         def score_fn(modified_graph):
-            return self._fingerprint_score(node_idx, modified_graph.to(self.device), x)
+            return self.compute_fingerprint_score(node_idx, graph_override=modified_graph)
 
         neighbors = list(g_nx.neighbors(node_idx))
-        non_neighbors = list(set(range(self.dataset.graph.num_nodes())) - set(neighbors) - {node_idx})
+        non_neighbors = list(set(range(self.shadow_graph.num_nodes())) - set(neighbors) - {node_idx})
 
         applied = 0
         while applied < perturb_budget:
             best_delta = 0
             best_graph = None
             best_action = None
-
 
             for nbr in non_neighbors:
                 temp_g = copy.deepcopy(g_nx)
@@ -855,13 +804,11 @@ class InductiveFingerprintGenerator:
                     pred = self.model(g_temp, x)[node_idx].argmax().item()
                 if pred != original_pred:
                     continue
-                score = score_fn(g_temp)
-                delta = score - score_fn(self.shadow_graph)
+                delta = score_fn(g_temp) - score_fn(self.shadow_graph)
                 if delta > best_delta:
                     best_delta = delta
                     best_graph = g_temp
                     best_action = ('add', nbr)
-
 
             for nbr in neighbors:
                 temp_g = copy.deepcopy(g_nx)
@@ -872,15 +819,14 @@ class InductiveFingerprintGenerator:
                         pred = self.model(g_temp, x)[node_idx].argmax().item()
                     if pred != original_pred:
                         continue
-                    score = score_fn(g_temp)
-                    delta = score - score_fn(self.shadow_graph)
+                    delta = score_fn(g_temp) - score_fn(self.shadow_graph)
                     if delta > best_delta:
                         best_delta = delta
                         best_graph = g_temp
                         best_action = ('remove', nbr)
 
             if best_graph is None:
-                break  
+                break
             self.shadow_graph = best_graph
             g_nx = to_networkx(best_graph.to('cpu'), to_undirected=True)
 
@@ -892,19 +838,15 @@ class InductiveFingerprintGenerator:
                 non_neighbors.append(best_action[1])
 
             applied += 1
-
+            
     def _greedy_edge_perturbation_l(self, node_idx, perturb_budget):
         """
         Limited knowledge edge perturbation (Inductive-L). 
         Uses confidence margin (1 - confidence) as proxy for fingerprint sensitivity.
         """
-        import copy
-        from torch_geometric.utils import to_networkx, from_networkx
-        import torch
-        import torch.nn.functional as F
 
         g_nx = to_networkx(self.shadow_graph.to('cpu'), to_undirected=True)
-        x = self.dataset.features.to(self.device)
+        x = self._get_features().to(self.device)
         self.model.eval()
 
         with torch.no_grad():
@@ -918,12 +860,12 @@ class InductiveFingerprintGenerator:
                 logits = self.model(modified_graph.to(self.device), x)
                 pred = logits[node_idx].argmax().item()
                 if pred != original_pred:
-                    return -1 
+                    return -1
                 conf = F.softmax(logits[node_idx], dim=0)[pred].item()
                 return 1 - conf
 
         neighbors = list(g_nx.neighbors(node_idx))
-        non_neighbors = list(set(range(self.dataset.graph.num_nodes())) - set(neighbors) - {node_idx})
+        non_neighbors = list(set(range(self.shadow_graph.num_nodes())) - set(neighbors) - {node_idx})
 
         applied = 0
         while applied < perturb_budget:
@@ -967,7 +909,6 @@ class InductiveFingerprintGenerator:
                 non_neighbors.append(best_action[1])
 
             applied += 1
-
 
 class BitFlipAttack:
     def __init__(self, model, attack_type='random', bit=0):
@@ -1022,25 +963,25 @@ class MettackHelper:
     def __init__(self, graph, features, labels, train_mask, val_mask, test_mask,
                  n_perturbations=5, device='cpu', max_perturbations=50,
                  surrogate_epochs=30, candidate_sample_size=20):
-        self.graph = dgl.add_self_loop(graph).to(device)
-        self.features = features.to(device)
-        self.labels = labels.to(device)
-        self.train_mask = train_mask.to(device)
+        self.device = device
+        self.graph = dgl.add_self_loop(graph).to(self.device)
+        self.features = features.to(self.device)
+        self.labels = labels.to(self.device)
+        self.train_mask = train_mask.to(self.device)
         self.surrogate_epochs = surrogate_epochs
         self.candidate_sample_size = candidate_sample_size
         if val_mask is not None:
-            self.val_mask = val_mask.to(device)
+            self.val_mask = val_mask.to(self.device)
         else:
-            self.val_mask = self._create_val_mask_from_train(train_mask).to(device)
+            self.val_mask = self._create_val_mask_from_train(train_mask).to(self.device)
             
-        self.test_mask = test_mask.to(device)
+        self.test_mask = test_mask.to(self.device)
         
         self.n_perturbations = n_perturbations
-        self.device = device
 
         in_feats = features.shape[1]
         n_classes = int(labels.max().item()) + 1
-        self.surrogate = GCN(in_feats, n_classes).to(device)
+        self.surrogate = GCN(in_feats, n_classes).to(self.device)
 
         torch.manual_seed(42)
         np.random.seed(42)
