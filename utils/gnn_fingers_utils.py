@@ -248,14 +248,16 @@ def create_obfuscated_models(target_model: nn.Module, dataset, task_type: str,
     
     if attack_method == "comprehensive":
         # Mix of all obfuscation techniques
-        fine_tune_count = num_models // 3
-        retrain_count = num_models // 3
-        distill_count = num_models - fine_tune_count - retrain_count
+        fine_tune_count = num_models // 4
+        retrain_count = num_models // 4
+        distill_count = num_models // 4
+        prune_count = num_models - fine_tune_count - retrain_count - distill_count
         
         methods = [
             ("fine_tuning", fine_tune_count),
             ("partial_retraining", retrain_count),
-            ("distillation", distill_count)
+            ("distillation", distill_count),
+            ("pruning", prune_count)
         ]
     elif attack_method == "fine_tuning":
         methods = [("fine_tuning", num_models)]
@@ -295,11 +297,21 @@ def create_obfuscated_models(target_model: nn.Module, dataset, task_type: str,
                 elif method == "distillation":
                     # Determine output dimension for tasks lacking explicit num_classes
                     out_dim = dataset.num_classes if hasattr(dataset, 'num_classes') and dataset.num_classes else (1 if task_type in ["link_prediction", "graph_matching"] else 2)
+                    
+                    # Use the same hidden dimension as the target model to avoid tensor shape mismatches
+                    target_hidden_dim = target_model.convs[0].out_channels if hasattr(target_model, 'convs') and len(target_model.convs) > 0 else 64
+                    
                     model = ModelObfuscator.distill_model(
                         target_model, data_handle, task_type,
                         dataset.num_features if hasattr(dataset, 'num_features') else target_model.convs[0].in_channels,
-                        random.choice([32, 64, 96]), 
+                        target_hidden_dim,  # Use target model's hidden dimension
                         out_dim, epochs=100, device=device
+                    )
+                elif method == "pruning":
+                    model = ModelObfuscator.prune_model(
+                        target_model, data_handle, task_type,
+                        random.choice([0.1, 0.2, 0.3]), # Example pruning ratio
+                        epochs=20, device=device
                     )
                 else:
                     continue
