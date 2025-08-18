@@ -846,6 +846,16 @@ class ModelObfuscator:
                     # Ensure target is in [0,1] range and prediction is properly shaped
                     target = torch.tensor([sim], dtype=torch.float, device=device).clamp(0, 1)
                     pred = pred.squeeze().clamp(1e-7, 1-1e-7)  # Avoid log(0) or log(1)
+                    
+                    # Dynamic tensor shape handling for graph matching
+                    if pred.dim() == 0:  # scalar prediction
+                        pred = pred.unsqueeze(0)  # Make it [1] to match target [1]
+                    
+                    # Ensure pred and target have the same shape
+                    if pred.shape != target.shape:
+                        if pred.numel() == 1 and target.numel() == 1:
+                            pred = pred.view_as(target)
+                    
                     loss = F.binary_cross_entropy(pred, target)
                     loss.backward()
                     optimizer.step()

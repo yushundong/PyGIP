@@ -165,7 +165,7 @@ def run_single_experiment_with_mode(task_type, dataset_name, model_architecture,
         with open(individual_path, 'w') as f:
             json.dump(individual_result, f, indent=2, default=str)
         
-        print(f"SUCCESS: {task_type} - {dataset_name} ({model_architecture}) - {mode_suffix.upper()} mode: AUC={result['auc_score']:.4f}, ARUC={result['aruc_score']:.4f}")
+        print(f"SUCCESS: {task_type} - {dataset_name} ({model_architecture}) - {mode_suffix.upper()} mode: AUC={result['auc']:.4f}, ARUC={result['aruc']:.4f}")
         print(f"   Model saved to: {save_path}")
         print(f"   Individual results saved to: {individual_path}")
         
@@ -365,7 +365,7 @@ def run_all_gnnfingers_experiments(quick_mode=False):
             with open(individual_path, 'w') as f:
                 json.dump(individual_result, f, indent=2, default=str)
             
-            print(f"SUCCESS: {task_type} - {dataset_name} ({model_architecture}): AUC={result['auc_score']:.4f}, ARUC={result['aruc_score']:.4f}")
+            print(f"SUCCESS: {task_type} - {dataset_name} ({model_architecture}): AUC={result['auc']:.4f}, ARUC={result['aruc']:.4f}")
             print(f"   Model saved to: {save_path}")
             print(f"   Individual results saved to: {individual_path}")
             successful_experiments += 1

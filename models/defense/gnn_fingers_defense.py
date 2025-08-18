@@ -167,6 +167,8 @@ class GNNFingersDefense(BaseDefense):
                 edge_prob=self.fingerprint_params['edge_prob'],
                 device=self.device
             )
+            # Add task type information for special handling
+            self.fingerprint_constructor.task_type = self.task_type
         elif self.task_type == "graph_classification":
             self.fingerprint_constructor = GraphFingerprint(
                 num_fingerprints=self.fingerprint_params['num_fingerprints'],
@@ -176,6 +178,8 @@ class GNNFingersDefense(BaseDefense):
                 edge_prob=self.fingerprint_params['edge_prob'],
                 device=self.device
             )
+            # Add task type information for special handling
+            self.fingerprint_constructor.task_type = self.task_type
         elif self.task_type == "link_prediction":
             self.fingerprint_constructor = LinkPredictionFingerprint(
                 num_nodes=self.fingerprint_params['num_nodes'],
@@ -184,6 +188,8 @@ class GNNFingersDefense(BaseDefense):
                 num_edge_samples=self.fingerprint_params['num_edge_samples'],
                 device=self.device
             )
+            # Add task type information for special handling
+            self.fingerprint_constructor.task_type = self.task_type
         elif self.task_type == "graph_matching":
             self.fingerprint_constructor = GraphMatchingFingerprint(
                 num_fingerprint_pairs=self.fingerprint_params['num_fingerprint_pairs'],
@@ -193,6 +199,8 @@ class GNNFingersDefense(BaseDefense):
                 edge_prob=self.fingerprint_params['edge_prob'],
                 device=self.device
             )
+            # Add task type information for special handling
+            self.fingerprint_constructor.task_type = self.task_type
         else:
             raise ValueError(f"Unsupported task type: {self.task_type}")
     
@@ -320,7 +328,21 @@ class GNNFingersDefense(BaseDefense):
         """Initialize the univerifier (binary classifier)."""
         # Get sample output to determine input dimension
         sample_output = self.fingerprint_constructor.get_model_outputs(self.target_model)
-        input_dim = sample_output.size(0)
+        
+        # Dynamic input dimension calculation based on task type
+        if self.task_type == "graph_classification":
+            # For graph classification, the univerifier takes flattened outputs from all fingerprints
+            # Each fingerprint produces an output, and we flatten and concatenate them
+            input_dim = sample_output.numel()  # Total number of elements in the flattened output
+        elif self.task_type == "link_prediction":
+            # For link prediction, use total flattened dimension like graph classification
+            input_dim = sample_output.numel()  # Total number of elements in the flattened output
+        elif self.task_type == "graph_matching":
+            # For graph matching, use total flattened dimension like graph classification
+            input_dim = sample_output.numel()  # Total number of elements in the flattened output
+        else:
+            # For other tasks (node_classification), use the original logic
+            input_dim = sample_output.size(0)
         
         self.univerifier = Univerifier(
             input_dim=input_dim,
@@ -527,17 +549,48 @@ class GNNFingersDefense(BaseDefense):
             dummy_labels = torch.tensor([0], dtype=torch.long, device=self.device)
             return dummy_loss, dummy_pred, dummy_labels
         
-        # Ensure all outputs have same size
-        min_size = min(out.size(0) for out in all_outputs if out.numel() > 0)
-        all_outputs = [out[:min_size] for out in all_outputs if out.numel() > 0]
-        
-        if not all_outputs:
-            dummy_loss = torch.tensor(0.0, requires_grad=True, device=self.device)
-            dummy_pred = torch.tensor([[0.5, 0.5]], requires_grad=True, device=self.device)
-            dummy_labels = torch.tensor([0], dtype=torch.long, device=self.device)
-            return dummy_loss, dummy_pred, dummy_labels
-        
-        batch_outputs = torch.stack(all_outputs)
+        # Handle different task types differently
+        if self.task_type in ["graph_classification", "link_prediction", "graph_matching"]:
+            # For graph classification, each output should be flattened to a 1D vector
+            processed_outputs = []
+            for out in all_outputs:
+                if out.numel() > 0:
+                    # Flatten the output to 1D
+                    flattened = out.view(-1)
+                    processed_outputs.append(flattened)
+            
+            if not processed_outputs:
+                dummy_loss = torch.tensor(0.0, requires_grad=True, device=self.device)
+                dummy_pred = torch.tensor([[0.5, 0.5]], requires_grad=True, device=self.device)
+                dummy_labels = torch.tensor([0], dtype=torch.long, device=self.device)
+                return dummy_loss, dummy_pred, dummy_labels
+            
+            # Ensure all outputs have same size by padding/truncating
+            max_size = max(out.size(0) for out in processed_outputs)
+            padded_outputs = []
+            for out in processed_outputs:
+                if out.size(0) < max_size:
+                    # Pad with zeros
+                    padding = torch.zeros(max_size - out.size(0), device=out.device, dtype=out.dtype)
+                    padded_out = torch.cat([out, padding], dim=0)
+                else:
+                    # Truncate
+                    padded_out = out[:max_size]
+                padded_outputs.append(padded_out)
+            
+            batch_outputs = torch.stack(padded_outputs)
+        else:
+            # For other tasks, use the original logic
+            min_size = min(out.size(0) for out in all_outputs if out.numel() > 0)
+            all_outputs = [out[:min_size] for out in all_outputs if out.numel() > 0]
+            
+            if not all_outputs:
+                dummy_loss = torch.tensor(0.0, requires_grad=True, device=self.device)
+                dummy_pred = torch.tensor([[0.5, 0.5]], requires_grad=True, device=self.device)
+                dummy_labels = torch.tensor([0], dtype=torch.long, device=self.device)
+                return dummy_loss, dummy_pred, dummy_labels
+            
+            batch_outputs = torch.stack(all_outputs)
         batch_labels = torch.tensor(labels[:len(all_outputs)], dtype=torch.long, device=self.device)
         
         # Get univerifier predictions

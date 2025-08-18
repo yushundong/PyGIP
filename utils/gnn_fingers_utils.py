@@ -214,10 +214,41 @@ def verify_single_model(univerifier: nn.Module, fingerprint_constructor: Fingerp
     try:
         model_outputs = fingerprint_constructor.get_model_outputs(model)
         
+        # Dynamic shape handling for different task types
+        if model_outputs.dim() == 2 and model_outputs.size(1) > 1:
+            # For graph classification, link prediction, etc. - flatten the outputs
+            model_outputs = model_outputs.flatten()
+        elif model_outputs.dim() == 1:
+            # Already 1D, keep as is
+            pass
+        else:
+            # For other cases, ensure it's 1D
+            model_outputs = model_outputs.view(-1)
+        
+        # Special handling for link prediction to improve discrimination
+        # Normalize and scale the outputs to make differences more pronounced
+        if hasattr(fingerprint_constructor, 'task_type') and fingerprint_constructor.task_type == "link_prediction":
+            # Apply normalization and scaling for better discrimination
+            model_outputs = (model_outputs - model_outputs.mean()) / (model_outputs.std() + 1e-8)
+            model_outputs = model_outputs * 2.0  # Scale up differences
+        
         univerifier.eval()
         with torch.no_grad():
             prediction = univerifier(model_outputs.unsqueeze(0))
-            confidence = prediction[0, 1].item()  # Positive class probability
+            
+            # Dynamic output handling for different univerifier architectures
+            if prediction.dim() == 2 and prediction.size(1) >= 2:
+                # Standard 2D output with multiple classes - use positive class probability
+                confidence = prediction[0, 1].item()
+            elif prediction.dim() == 2 and prediction.size(1) == 1:
+                # 2D output with single class - use sigmoid for binary classification
+                confidence = torch.sigmoid(prediction[0, 0]).item()
+            elif prediction.dim() == 1:
+                # 1D output - use sigmoid for binary classification
+                confidence = torch.sigmoid(prediction[0]).item()
+            else:
+                # Fallback - assume it's a binary output
+                confidence = torch.sigmoid(prediction).item()
         
         return confidence
     except Exception as e:

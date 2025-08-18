@@ -113,10 +113,10 @@ class FingerprintConstructor(ABC):
         """Get the output dimension of the fingerprint constructor."""
         try:
             # Return the consistent feature dimension we use
-            return 128
+            return self.feature_dim
         except Exception as e:
             print(f"Warning: Error getting output dimension: {e}")
-            return 128
+            return self.feature_dim
     
     def detect_actual_output_dimension(self, model: nn.Module) -> int:
         """Detect the actual output dimension by running a test forward pass."""
@@ -136,10 +136,10 @@ class FingerprintConstructor(ABC):
                     # Return the actual feature dimension
                     return sample_outputs.size(1)
                 else:
-                    return 128  # Fallback
+                    return self.feature_dim  # Fallback
         except Exception as e:
             print(f"Warning: Error detecting output dimension: {e}")
-            return 128
+            return self.feature_dim
 
 
 class NodeFingerprint(FingerprintConstructor):
@@ -466,8 +466,8 @@ class GraphFingerprint(FingerprintConstructor):
         """Create diverse random graphs for fingerprinting with consistent feature dimensions."""
         graphs = []
         
-        # Use a consistent feature dimension for better compatibility
-        feature_dim = 128  # Fixed dimension for consistency
+        # Use the feature dimension specified in the constructor for better compatibility
+        feature_dim = self.feature_dim
         
         for i in range(num_graphs):
             try:
@@ -638,20 +638,24 @@ class GraphFingerprint(FingerprintConstructor):
                     # Handle both 1D and 2D outputs properly
                     normalized_outputs = []
                     
-                    # Use consistent target feature dimension
-                    target_feature_dim = 128  # Fixed dimension for consistency
+                    # Use the actual output dimension from the model outputs
+                    # For graph classification, use the maximum dimension from actual outputs
+                    if outputs:
+                        target_feature_dim = max(out.numel() for out in outputs if out.numel() > 0)
+                    else:
+                        target_feature_dim = self.feature_dim  # Fallback to dataset feature dim
                     
                     # Second pass: normalize all outputs to consistent shape
                     for out in outputs:
                         try:
                             if out.dim() == 0:
-                                # Scalar output -> (1, 128)
+                                # Scalar output -> (1, target_feature_dim)
                                 out = out.unsqueeze(0).unsqueeze(0)
                                 if out.size(1) < target_feature_dim:
                                     padding = torch.zeros(1, target_feature_dim - out.size(1), device=out.device)
                                     out = torch.cat([out, padding], dim=1)
                             elif out.dim() == 1:
-                                # 1D output: (features,) -> (1, 128)
+                                # 1D output: (features,) -> (1, target_feature_dim)
                                 if out.size(0) < target_feature_dim:
                                     # Pad with zeros
                                     padding = torch.zeros(target_feature_dim - out.size(0), device=out.device)
@@ -659,7 +663,7 @@ class GraphFingerprint(FingerprintConstructor):
                                 elif out.size(0) > target_feature_dim:
                                     # Truncate
                                     out = out[:target_feature_dim]
-                                out = out.unsqueeze(0)  # (1, 128)
+                                out = out.unsqueeze(0)  # (1, target_feature_dim)
                             elif out.dim() == 2:
                                 # 2D output: (batch, features) - ensure batch=1
                                 if out.size(0) != 1:
@@ -731,10 +735,10 @@ class GraphFingerprint(FingerprintConstructor):
                     if torch.cuda.is_available():
                         torch.cuda.empty_cache()
                     # Return a default tensor as fallback
-                    return torch.zeros(1, 128, device=self.device)
+                    return torch.zeros(1, self.feature_dim, device=self.device)
             else:
                 # Return a default tensor if no outputs
-                return torch.zeros(1, 128, device=self.device)
+                return torch.zeros(1, self.feature_dim, device=self.device)
                 
         except Exception as e:
             print(f"Warning: Error in get_model_outputs: {e}")
@@ -767,7 +771,14 @@ class GraphFingerprint(FingerprintConstructor):
             # Algorithm 2 line 3: Aᵢᵗ⁺¹ = Flip(Aᵢᵗ, Rank(∇AL))
             # Note: edge_index updates don't require gradients, so we can do this directly
             if hasattr(fp, 'edge_index') and fp.edge_index.size(1) > 0:
-                self._update_adjacency_matrix_exact(fp, alpha)
+                # Dynamic method selection based on fingerprint type
+                if hasattr(self, '_update_graph_adjacency_matrix_exact'):
+                    self._update_graph_adjacency_matrix_exact(fp, alpha)
+                elif hasattr(self, '_update_adjacency_matrix_exact'):
+                    self._update_adjacency_matrix_exact(alpha)
+                else:
+                    # Fallback: skip adjacency matrix update
+                    pass
             
             # Clear gradients to prevent memory accumulation
             if fp.x.grad is not None:
