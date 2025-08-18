@@ -5,7 +5,8 @@ from .mea.MEA import (
     ModelExtractionAttack2,
     ModelExtractionAttack3,
     ModelExtractionAttack4,
-    ModelExtractionAttack5
+    ModelExtractionAttack5,
+    ModelExtractionAttack6,
 )
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     'ModelExtractionAttack3',
     'ModelExtractionAttack4',
     'ModelExtractionAttack5',
+    'ModelExtractionAttack6',
 ]

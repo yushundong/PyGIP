@@ -36,3 +36,11 @@ Icon
 
 #virtual environments folder
 .venv
+
+/pygip.egg-info/
+/*.egg-info
+/__pycache__/
+/venv/
+/.venv/
+*.pyc
+.DS_Store
