@@ -644,12 +644,8 @@ def get_model_for_task(task_type: str, input_dim: int, hidden_dim: int,
     if device is None:
         if torch.cuda.is_available():
             device = torch.device('cuda')
-            print(f"Model creation using device: {device}")
-            print(f"GPU: {torch.cuda.get_device_name()}")
         else:
             device = torch.device('cpu')
-            print(f"Model creation using device: {device}")
-            print("GPU not available, using CPU")
     
     if task_type == "node_classification":
         return GCN(input_dim, hidden_dim, output_dim, num_layers).to(device)
