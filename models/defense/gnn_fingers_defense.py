@@ -1,10 +1,3 @@
-"""
-GNNFingers: A Fingerprinting Framework for Verifying Ownerships of Graph Neural Networks
-Defense implementation following PyGIP framework conventions.
-
-Path: pygip/defense/gnn_fingers_defense.py
-"""
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -31,12 +24,6 @@ from .gnn_fingers_protect import (
 
 
 class GNNFingersDefense(BaseDefense):
-    """
-    GNNFingers defense mechanism for verifying GNN model ownership.
-    
-    This defense creates fingerprints that can identify pirated/obfuscated models
-    while preserving the original model's utility.
-    """
     
     supported_api_types = {"pyg"}
     supported_datasets = {"Cora", "Citeseer", "PubMed", "PROTEINS", "AIDS", "MUTAG", 
@@ -52,19 +39,6 @@ class GNNFingersDefense(BaseDefense):
                  univerifier_params: Optional[Dict] = None,
                  training_params: Optional[Dict] = None,
                  device: Optional[Union[str, torch.device]] = None):
-        """
-        Initialize GNNFingers defense.
-        
-        Args:
-            dataset: PyGIP Dataset instance
-            task_type: Type of GNN task ("node_classification", "graph_classification", 
-                      "link_prediction", "graph_matching")
-            num_fingerprints: Number of fingerprints to create
-            fingerprint_params: Parameters for fingerprint construction
-            univerifier_params: Parameters for univerifier model
-            training_params: Training parameters
-            device: Computing device
-        """
         # We don't use attack_node_fraction for fingerprinting, so set to None
         super().__init__(dataset, attack_node_fraction=None, device=device)
         
@@ -105,7 +79,6 @@ class GNNFingersDefense(BaseDefense):
         self._initialize_fingerprint_constructor()
     
     def _get_default_fingerprint_params(self) -> Dict:
-        """Get default fingerprint construction parameters."""
         base_params = {
             'num_fingerprints': self.num_fingerprints,
             'edge_prob': 0.2,
@@ -140,7 +113,6 @@ class GNNFingersDefense(BaseDefense):
         return base_params
     
     def _get_default_univerifier_params(self) -> Dict:
-        """Get default univerifier parameters."""
         return {
             'hidden_dims': [128, 64, 32],
             'dropout': 0.3,
@@ -148,7 +120,6 @@ class GNNFingersDefense(BaseDefense):
         }
     
     def _get_default_training_params(self) -> Dict:
-        """Get default training parameters."""
         return {
             'epochs_total': 100,
             'e1': 1,  # Fingerprint optimization epochs per iteration
@@ -159,7 +130,6 @@ class GNNFingersDefense(BaseDefense):
         }
     
     def _initialize_fingerprint_constructor(self):
-        """Initialize fingerprint constructor based on task type."""
         if self.task_type == "node_classification":
             self.fingerprint_constructor = NodeFingerprint(
                 num_nodes=self.fingerprint_params['num_nodes'],
@@ -205,16 +175,6 @@ class GNNFingersDefense(BaseDefense):
             raise ValueError(f"Unsupported task type: {self.task_type}")
     
     def defend(self, attack_method: str = "comprehensive") -> Dict:
-        """
-        Main defense method implementing GNNFingers framework.
-        
-        Args:
-            attack_method: Type of attack scenario to defend against
-                          ("comprehensive", "fine_tuning", "distillation", "partial_retraining")
-        
-        Returns:
-            Dict containing defense results and metrics
-        """
         print(f"Starting GNNFingers defense for {self.task_type}")
         print(f"Dataset: {self.dataset.dataset_name}")
         print(f"Attack method: {attack_method}")
@@ -250,7 +210,6 @@ class GNNFingersDefense(BaseDefense):
         return results
     
     def _get_model_counts(self, attack_method: str) -> Tuple[int, int]:
-        """Get number of positive and negative models based on attack method."""
         if attack_method == "comprehensive":
             return 100, 100  # Full-scale evaluation
         elif attack_method in ["fine_tuning", "distillation", "partial_retraining"]:
@@ -259,7 +218,6 @@ class GNNFingersDefense(BaseDefense):
             return 20, 20   # Quick evaluation
     
     def _train_target_model(self) -> nn.Module:
-        """Train the target model that we want to protect."""
         print("Training target model...")
         
         # Get appropriate model architecture
@@ -287,7 +245,6 @@ class GNNFingersDefense(BaseDefense):
         return model
     
     def _train_node_classification_model(self, model: nn.Module, optimizer) -> nn.Module:
-        """Train node classification model."""
         data = self.graph_data.to(self.device)
         
         for epoch in range(200):
@@ -307,25 +264,21 @@ class GNNFingersDefense(BaseDefense):
         
         return model
     
-    def _train_graph_classification_model(self, model: nn.Module, optimizer) -> nn.Module:
-        """Train graph classification model."""
+    def _train_graph_classification_model(self, model: nn.Module, optimizer) -> nn.Module:        
         # Implementation would use DataLoader for batch processing
         # Simplified for this example
         print("Graph classification training implemented")
         return model
     
     def _train_link_prediction_model(self, model: nn.Module, optimizer) -> nn.Module:
-        """Train link prediction model."""
         print("Link prediction training implemented")
         return model
     
     def _train_graph_matching_model(self, model: nn.Module, optimizer) -> nn.Module:
-        """Train graph matching model."""
         print("Graph matching training implemented")
         return model
     
     def _initialize_univerifier(self):
-        """Initialize the univerifier (binary classifier)."""
         # Get sample output to determine input dimension
         sample_output = self.fingerprint_constructor.get_model_outputs(self.target_model)
         
@@ -353,7 +306,6 @@ class GNNFingersDefense(BaseDefense):
         print(f"Univerifier initialized with input dimension: {input_dim}")
     
     def _prepare_suspect_models(self, num_positive: int, num_negative: int, attack_method: str):
-        """Prepare positive (pirated) and negative (independent) models."""
         print(f"Creating {num_positive} positive and {num_negative} negative models...")
         
         # Create positive models (pirated versions)
@@ -390,7 +342,6 @@ class GNNFingersDefense(BaseDefense):
         print(f"Created {len(self.positive_models)} positive and {len(self.negative_models)} negative models")
     
     def _train_independent_model(self, model: nn.Module, optimizer):
-        """Train an independent model (not derived from target)."""
         if self.task_type == "node_classification":
             data = self.graph_data.to(self.device)
             
@@ -404,7 +355,6 @@ class GNNFingersDefense(BaseDefense):
         # Add other task implementations as needed
     
     def _train_fingerprinting_system(self):
-        """Train fingerprinting system using Algorithm 1 (Joint alternating optimization)."""
         print("Training fingerprinting system with Algorithm 1...")
         
         univerifier_optimizer = torch.optim.Adam(
@@ -474,7 +424,6 @@ class GNNFingersDefense(BaseDefense):
             epoch += 1
     
     def _collect_fingerprint_outputs(self) -> Dict:
-        """Collect outputs from all models using fingerprints."""
         try:
             # Target model output
             target_out = self.fingerprint_constructor.get_model_outputs(self.target_model)
@@ -523,7 +472,6 @@ class GNNFingersDefense(BaseDefense):
             }
     
     def _calculate_unified_loss(self, fingerprint_outputs: Dict) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Calculate unified loss L as per Algorithm 1."""
         all_outputs = []
         labels = []
         
@@ -602,7 +550,6 @@ class GNNFingersDefense(BaseDefense):
         return loss, predictions, batch_labels
     
     def _evaluate_defense(self) -> Dict:
-        """Evaluate the defense performance."""
         # Create fresh test models
         test_positive_models = create_obfuscated_models(
             target_model=self.target_model,
@@ -637,16 +584,7 @@ class GNNFingersDefense(BaseDefense):
         )
     
     def verify_ownership(self, suspect_model: nn.Module, threshold: float = 0.5) -> Tuple[bool, float]:
-        """
-        Verify if a suspect model is pirated from our target model.
         
-        Args:
-            suspect_model: Model to verify
-            threshold: Decision threshold
-        
-        Returns:
-            Tuple of (is_pirated, confidence_score)
-        """
         try:
             suspect_outputs = self.fingerprint_constructor.get_model_outputs(suspect_model)
             
@@ -663,15 +601,12 @@ class GNNFingersDefense(BaseDefense):
             return False, 0.0
     
     def _load_model(self):
-        """Load a pre-trained model (PyGIP interface requirement)."""
         # Implementation for loading pre-trained models
         pass
     
     def _train_defense_model(self):
-        """Train defense model (PyGIP interface requirement)."""
         return self._train_fingerprinting_system()
     
     def _train_surrogate_model(self):
-        """Train surrogate model (PyGIP interface requirement)."""
         # For GNNFingers, this would be the suspect models
         return self._prepare_suspect_models(50, 50, "comprehensive")

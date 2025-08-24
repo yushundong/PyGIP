@@ -1,7 +1,3 @@
-"""
-Utility functions and metrics for GNNFingers framework.
-"""
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -17,16 +13,6 @@ from models.defense.gnn_fingers_protect import FingerprintConstructor
 
 
 def calculate_aruc(robustness_scores: List[float], uniqueness_scores: List[float]) -> float:
-    """
-    Calculate Area Under Robustness-Uniqueness Curve (ARUC).
-    
-    Args:
-        robustness_scores: List of robustness (TPR) scores
-        uniqueness_scores: List of uniqueness (TNR) scores
-    
-    Returns:
-        ARUC score
-    """
     if len(robustness_scores) > 1 and len(uniqueness_scores) > 1:
         aruc = np.trapz(uniqueness_scores, robustness_scores)
         return abs(aruc)
@@ -36,14 +22,6 @@ def calculate_aruc(robustness_scores: List[float], uniqueness_scores: List[float
 
 def plot_robustness_uniqueness_curve(results: Dict, title_suffix: str = "", 
                                     save_path: Optional[str] = None):
-    """
-    Plot Robustness-Uniqueness curve.
-    
-    Args:
-        results: Results dictionary containing threshold_results
-        title_suffix: Additional title text
-        save_path: Path to save the plot
-    """
     if not results.get('threshold_results'):
         print("No results to plot")
         return
@@ -94,20 +72,6 @@ def evaluate_fingerprint_verification(univerifier: nn.Module,
                                     negative_models: List[nn.Module],
                                     device: torch.device,
                                     thresholds: Optional[List[float]] = None) -> Dict:
-    """
-    Evaluate fingerprint verification performance across multiple thresholds.
-    
-    Args:
-        univerifier: Trained univerifier model
-        fingerprint_constructor: Fingerprint constructor
-        positive_models: List of positive (pirated) models
-        negative_models: List of negative (independent) models
-        device: Computing device
-        thresholds: List of thresholds to evaluate
-    
-    Returns:
-        Dictionary containing evaluation results
-    """
     if thresholds is None:
         thresholds = np.linspace(0.1, 0.9, 9)
 
@@ -199,18 +163,6 @@ def evaluate_fingerprint_verification(univerifier: nn.Module,
 
 def verify_single_model(univerifier: nn.Module, fingerprint_constructor: FingerprintConstructor,
                        model: nn.Module, device: torch.device) -> float:
-    """
-    Verify ownership of a single model.
-    
-    Args:
-        univerifier: Trained univerifier
-        fingerprint_constructor: Fingerprint constructor
-        model: Model to verify
-        device: Computing device
-    
-    Returns:
-        Confidence score (0-1)
-    """
     try:
         model_outputs = fingerprint_constructor.get_model_outputs(model)
         
@@ -259,20 +211,6 @@ def verify_single_model(univerifier: nn.Module, fingerprint_constructor: Fingerp
 def create_obfuscated_models(target_model: nn.Module, dataset, task_type: str, 
                            num_models: int, attack_method: str, 
                            device: torch.device) -> List[nn.Module]:
-    """
-    Create obfuscated versions of target model for testing.
-    
-    Args:
-        target_model: Original model to obfuscate
-        dataset: Dataset for training
-        task_type: Type of GNN task
-        num_models: Number of models to create
-        attack_method: Attack method ("comprehensive", "fine_tuning", etc.)
-        device: Computing device
-    
-    Returns:
-        List of obfuscated models
-    """
     print(f"Creating {num_models} obfuscated models using {attack_method}...")
     
     obfuscated_models = []
@@ -362,17 +300,6 @@ def create_obfuscated_models(target_model: nn.Module, dataset, task_type: str,
 
 def calculate_model_similarity(model1: nn.Module, model2: nn.Module, 
                               fingerprint_constructor: FingerprintConstructor) -> float:
-    """
-    Calculate similarity between two models using fingerprints.
-    
-    Args:
-        model1: First model
-        model2: Second model
-        fingerprint_constructor: Fingerprint constructor
-    
-    Returns:
-        Similarity score (0-1)
-    """
     try:
         output1 = fingerprint_constructor.get_model_outputs(model1)
         output2 = fingerprint_constructor.get_model_outputs(model2)

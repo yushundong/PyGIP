@@ -6,13 +6,20 @@ This demonstrates the adapter functionality that allows GNNFingers to work
 with existing PyGIP datasets like Cora(api_type='dgl').
 
 Usage:
-    python test_adapter_demo.py
+    python examples/adapter_demo.py
 """
 
 import torch
 import sys
+import os
 import warnings
 warnings.filterwarnings('ignore')
+
+# Add project root to path to import PyGIP modules
+script_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(script_dir)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
 # Original PyGIP imports (as in your existing test.py)
 from datasets import Cora, PubMed
@@ -20,8 +27,8 @@ from models.attack import ModelExtractionAttack0 as MEA
 
 # GNNFingers adapter import
 try:
-    from pygip.datasets.gnnfingers_adapter import PyGIPDatasetAdapter, adapt_pygip_dataset
-    from pygip.defense.gnn_fingers_defense import GNNFingersDefense
+    from datasets.gnnfingers_adapter import PyGIPDatasetAdapter, adapt_pygip_dataset
+    from models.defense.gnn_fingers_defense import GNNFingersDefense
     ADAPTER_AVAILABLE = True
 except ImportError as e:
     print(f"Adapter not available: {e}")
@@ -98,96 +105,56 @@ def demo_gnnfingers_with_adapter():
 
 
 def demo_both_workflows():
-    """Demonstrate both original PyGIP and GNNFingers workflows."""
-    print("=" * 25 + " COMPLETE INTEGRATION DEMO " + "=" * 25)
+    """Run both the original PyGIP workflow and the GNNFingers adapter workflow."""
+    print("=" * 60)
+    print("DEMONSTRATING BOTH WORKFLOWS")
+    print("=" * 60)
     
-    # Run original PyGIP workflow
+    # Run original workflow
     original_result = demo_original_pygip_workflow()
     
-    # Run GNNFingers workflow with adapter
-    gnnfingers_result = demo_gnnfingers_with_adapter()
+    # Run GNNFingers adapter workflow
+    adapter_result = demo_gnnfingers_with_adapter()
     
-    # Summary
-    print("\n" + "=" * 25 + " INTEGRATION SUMMARY " + "=" * 25)
-    print("SUCCESS: Original PyGIP functionality: PRESERVED")
-    print("SUCCESS: GNNFingers functionality: ADDED")
-    print("SUCCESS: Backward compatibility: MAINTAINED")
-    print("SUCCESS: Dataset adapter: WORKING")
+    print("\n" + "=" * 60)
+    print("WORKFLOW COMPARISON")
+    print("=" * 60)
+    print("Original PyGIP workflow:")
+    print(f"  - Status: {'SUCCESS' if original_result else 'FAILED'}")
+    print(f"  - Result: {original_result}")
     
-    if ADAPTER_AVAILABLE and gnnfingers_result:
-        print("SUCCESS: Integration status: SUCCESS")
-    else:
-        print("WARNING: Integration status: PARTIAL (missing dependencies)")
+    print("\nGNNFingers with adapter workflow:")
+    print(f"  - Status: {'SUCCESS' if adapter_result else 'FAILED'}")
+    print(f"  - Result: {adapter_result}")
     
-    return original_result, gnnfingers_result
-
-
-def demo_factory_adapter():
-    """Demonstrate the factory function for dataset adaptation."""
-    if not ADAPTER_AVAILABLE:
-        print("ERROR: Factory adapter not available")
-        return
-    
-    print("\n" + "=" * 25 + " FACTORY ADAPTER DEMO " + "=" * 25)
-    
-    # Test the factory function
-    datasets_to_test = ['Cora', 'PubMed']
-    
-    for dataset_name in datasets_to_test:
-        try:
-            print(f"\nTesting {dataset_name} with factory adapter...")
-            
-            # Use factory function
-            adapted_dataset = adapt_pygip_dataset(dataset_name, api_type='dgl')
-            
-            # Test with GNNFingers
-            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-            
-            defense = GNNFingersDefense(
-                dataset=adapted_dataset,
-                task_type="node_classification", 
-                num_fingerprints=16,  # Very quick test
-                training_params={'epochs_total': 10},
-                device=device
-            )
-            
-            print(f"{dataset_name} successfully adapted and tested with GNNFingers")
-            
-        except Exception as e:
-            print(f"{dataset_name} test failed: {e}")
+    return original_result, adapter_result
 
 
 def main():
-    """Main demo function."""
-    print("PyGIP + GNNFingers Integration Demo")
-    print("=" * 60)
-    print("This demo shows how GNNFingers works with existing PyGIP datasets")
-    print("=" * 60)
+    """Main function to run the demo."""
+    print("PyGIP GNNFingers Adapter Demo")
+    print("=" * 40)
+    print("This demo shows how to use GNNFingers with existing PyGIP datasets")
+    print("=" * 40)
     
-    # Check PyTorch
-    print(f"PyTorch version: {torch.__version__}")
-    print(f"CUDA available: {torch.cuda.is_available()}")
-    print(f"Adapter available: {ADAPTER_AVAILABLE}")
-    print()
+    # Check if GNNFingers is available
+    if not ADAPTER_AVAILABLE:
+        print("WARNING: GNNFingers adapter not available")
+        print("Running only original PyGIP workflow...")
+        demo_original_pygip_workflow()
+        return
     
-    try:
-        # Run comprehensive demo
-        demo_both_workflows()
-        
-        # Test factory function
-        demo_factory_adapter()
-        
-        print("\n" + "=" * 25 + " DEMO COMPLETED " + "=" * 25)
-        print("Key takeaways:")
-        print("1. Original PyGIP functionality is fully preserved")
-        print("2. GNNFingers can work with existing PyGIP datasets via adapter") 
-        print("3. No changes needed to existing PyGIP test code")
-        print("4. New GNNFingers tests can be added alongside existing ones")
-        
-    except Exception as e:
-        print(f"\nDemo failed: {e}")
-        import traceback
-        traceback.print_exc()
+    # Run both workflows
+    demo_both_workflows()
+    
+    print("\n" + "=" * 40)
+    print("DEMO COMPLETED SUCCESSFULLY!")
+    print("=" * 40)
+    print("\nKey Benefits of the Adapter:")
+    print("1. Seamless integration with existing PyGIP datasets")
+    print("2. No need to modify existing PyGIP code")
+    print("3. GNNFingers defense capabilities on PyGIP datasets")
+    print("4. Maintains backward compatibility")
 
 
 if __name__ == "__main__":

@@ -1,7 +1,3 @@
-"""
-GNN model implementations for GNNFingers framework.
-"""
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -13,7 +9,6 @@ import copy
 
 
 class GCN(nn.Module):
-    """Graph Convolutional Network for Node Classification."""
     
     def __init__(self, input_dim: int, hidden_dim: int, output_dim: int,
                  num_layers: int = 2, dropout: float = 0.5):
@@ -40,7 +35,6 @@ class GCN(nn.Module):
 
 
 class GCNMean(nn.Module):
-    """Graph Convolutional Network with Mean Pooling for Graph Classification."""
     
     def __init__(self, input_dim: int, hidden_dim: int, output_dim: int,
                  num_layers: int = 3, dropout: float = 0.5):
@@ -77,7 +71,6 @@ class GCNMean(nn.Module):
 
 
 class GCNLinkPredictor(nn.Module):
-    """Graph Convolutional Network for Link Prediction."""
     
     def __init__(self, input_dim: int, hidden_dim: int, num_layers: int = 2, dropout: float = 0.5):
         super(GCNLinkPredictor, self).__init__()
@@ -112,7 +105,6 @@ class GCNLinkPredictor(nn.Module):
             return embeddings
 
     def get_embeddings(self, x, edge_index):
-        """Get node embeddings through GCN layers."""
         for i, conv in enumerate(self.convs):
             x = conv(x, edge_index)
             if i < len(self.convs) - 1:
@@ -121,7 +113,6 @@ class GCNLinkPredictor(nn.Module):
         return x
 
     def predict_links(self, embeddings, edge_pairs):
-        """Predict link probabilities for given node pairs."""
         source_emb = embeddings[edge_pairs[0]]
         target_emb = embeddings[edge_pairs[1]]
 
@@ -131,7 +122,6 @@ class GCNLinkPredictor(nn.Module):
 
 
 class GCNDiff(nn.Module):
-    """Graph Convolutional Network with Difference Pooling for Graph Classification."""
     
     def __init__(self, input_dim: int, hidden_dim: int, output_dim: int = 1,
                  num_layers: int = 3, dropout: float = 0.5):
@@ -159,7 +149,6 @@ class GCNDiff(nn.Module):
         )
 
     def forward(self, x, edge_index, batch):
-        """Forward pass for graph classification."""
         # Graph convolution layers
         for i, conv in enumerate(self.convs):
             x = conv(x, edge_index)
@@ -175,7 +164,6 @@ class GCNDiff(nn.Module):
         return F.log_softmax(x, dim=1)
 
     def forward_matching(self, data1, data2):
-        """Forward pass for graph matching (legacy method)."""
         emb1 = self.get_graph_embedding(data1.x, data1.edge_index, data1.batch)
         emb2 = self.get_graph_embedding(data2.x, data2.edge_index, data2.batch)
         
@@ -187,7 +175,6 @@ class GCNDiff(nn.Module):
         return torch.sigmoid(similarity)
 
     def get_graph_embedding(self, x, edge_index, batch):
-        """Get graph-level embedding."""
         for i, conv in enumerate(self.convs):
             x = conv(x, edge_index)
             if i < len(self.convs) - 1:
@@ -199,7 +186,6 @@ class GCNDiff(nn.Module):
 
 
 class GCNDiffGraphMatching(nn.Module):
-    """Graph Convolutional Network with Difference Pooling for Graph Matching."""
     
     def __init__(self, input_dim: int, hidden_dim: int, output_dim: int = 1,
                  num_layers: int = 3, dropout: float = 0.5):
@@ -230,7 +216,6 @@ class GCNDiffGraphMatching(nn.Module):
         )
 
     def forward(self, data1, data2):
-        """Forward pass for graph matching."""
         emb1 = self.get_graph_embedding(data1.x, data1.edge_index, data1.batch)
         emb2 = self.get_graph_embedding(data2.x, data2.edge_index, data2.batch)
         
@@ -242,11 +227,9 @@ class GCNDiffGraphMatching(nn.Module):
         return torch.sigmoid(similarity)
     
     def forward_matching(self, data1, data2):
-        """Alternative forward pass for graph matching (for compatibility)."""
         return self.forward(data1, data2)
 
     def get_graph_embedding(self, x, edge_index, batch):
-        """Get graph-level embedding."""
         for i, conv in enumerate(self.convs):
             x = conv(x, edge_index)
             if i < len(self.convs) - 1:
@@ -258,8 +241,6 @@ class GCNDiffGraphMatching(nn.Module):
 
 
 class GraphSage(nn.Module):
-    """GraphSage for Node Classification."""
-    
     def __init__(self, input_dim: int, hidden_dim: int, output_dim: int,
                  num_layers: int = 2, dropout: float = 0.5):
         super(GraphSage, self).__init__()
@@ -275,7 +256,6 @@ class GraphSage(nn.Module):
         self.convs.append(SAGEConv(hidden_dim, output_dim))
 
     def forward(self, x, edge_index):
-        """Forward pass for node classification."""
         for i, conv in enumerate(self.convs[:-1]):
             x = conv(x, edge_index)
             x = F.relu(x)
@@ -286,8 +266,6 @@ class GraphSage(nn.Module):
 
 
 class GraphSageLinkPredictor(nn.Module):
-    """GraphSage for Link Prediction."""
-    
     def __init__(self, input_dim: int, hidden_dim: int, output_dim: int = 1,
                  num_layers: int = 2, dropout: float = 0.5):
         super(GraphSageLinkPredictor, self).__init__()
@@ -314,7 +292,6 @@ class GraphSageLinkPredictor(nn.Module):
         )
 
     def forward(self, x, edge_index, edge_pairs=None):
-        """Forward pass for link prediction."""
         # Graph convolution layers
         for i, conv in enumerate(self.convs):
             x = conv(x, edge_index)
@@ -331,7 +308,6 @@ class GraphSageLinkPredictor(nn.Module):
             return node_embeddings
 
     def get_embeddings(self, x, edge_index):
-        """Get node embeddings."""
         for i, conv in enumerate(self.convs):
             x = conv(x, edge_index)
             if i < len(self.convs) - 1:

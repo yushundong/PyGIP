@@ -200,31 +200,5 @@ def adapt_pygip_dataset(dataset_name: str, api_type: str = 'dgl'):
         raise
 
 
-def test_adaptation():
-    """Test the dataset adaptation functionality."""
-    print("Testing PyGIP Dataset Adaptation")
-    print("=" * 50)
-    
-    datasets_to_test = ['Cora', 'PubMed']
-    
-    for dataset_name in datasets_to_test:
-        try:
-            print(f"\nTesting {dataset_name} adaptation...")
-            adapted_dataset = adapt_pygip_dataset(dataset_name, api_type='dgl')
-            
-            print(f"  Dataset name: {adapted_dataset.get_name()}")
-            print(f"  Nodes: {adapted_dataset.num_nodes}")
-            print(f"  Features: {adapted_dataset.num_features}")
-            print(f"  Classes: {adapted_dataset.num_classes}")
-            print(f"  Graph data shape: {adapted_dataset.graph_data.x.shape}")
-            print(f"  Edge index shape: {adapted_dataset.graph_data.edge_index.shape}")
-            print(f"SUCCESS: {dataset_name} adaptation successful")
-            
-        except Exception as e:
-            print(f"ERROR: {dataset_name} adaptation failed: {e}")
-    
-    print("\n" + "=" * 50)
-
-
-if __name__ == "__main__":
-    test_adaptation()
+# Test functionality moved to examples/test_adapter.py
+# Run with: python examples/test_adapter.py
