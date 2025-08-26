@@ -2,7 +2,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
-
+*pygip.egg-info
 # PyInstaller
 #  Usually contains a build/ and dist/ folder
 *.manifest
