@@ -36,3 +36,4 @@ Icon
 
 #virtual environments folder
 .venv
+venv/
