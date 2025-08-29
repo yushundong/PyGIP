@@ -17,6 +17,72 @@ from torch_geometric.data import Data as PyGData
 from models.defense.base import BaseDefense
 
 
+class LearnableGraphFingerprint(nn.Module):
+    """
+    A learnable graph fingerprint that converts PyG Data components to learnable parameters
+    """
+    def __init__(self, num_nodes, feature_dim):
+        super(LearnableGraphFingerprint, self).__init__()
+        self.num_nodes = num_nodes
+        self.feature_dim = feature_dim
+        
+        # Initialize node features as learnable parameters
+        self.x = nn.Parameter(torch.randn(num_nodes, feature_dim))
+        
+        # Initialize adjacency matrix as learnable parameters (dense representation)
+        self.adj_matrix = nn.Parameter(torch.zeros(num_nodes, num_nodes))
+    
+    @classmethod
+    def from_pyg_data(cls, x, edge_index, num_nodes, feature_dim):
+        """Create learnable fingerprint from PyG Data components"""
+        fingerprint = cls(num_nodes, feature_dim)
+        
+        # Initialize node features
+        fingerprint.x.data = x.clone()
+        
+        # Initialize adjacency matrix from edge_index
+        with torch.no_grad():
+            # Convert sparse edge_index to dense adjacency matrix
+            dense_adj = to_dense_adj(edge_index, max_num_nodes=num_nodes)[0]
+            fingerprint.adj_matrix.data = dense_adj
+        return fingerprint
+    
+    def forward(self, return_pyg_data=True):
+        """Return the graph structure using straight-through estimator"""
+        # Get discrete adjacency matrix (0.0 or 1.0) using straight-through estimator
+        adj_binary = (self.adj_matrix > 0.5).float()
+        adj_binary_st = adj_binary + (self.adj_matrix - self.adj_matrix.detach())
+        
+        # Convert dense adjacency to sparse edge_index
+        edge_index, edge_attr = dense_to_sparse(adj_binary_st)
+        
+        if return_pyg_data:
+            # Return as PyG Data object
+            return PyGData(x=self.x, edge_index=edge_index, edge_attr=edge_attr)
+        else:
+            # Return raw components
+            return self.x, edge_index, adj_binary
+    
+    def get_discrete_adjacency(self):
+        """Get the actual discrete adjacency matrix (for verification)"""
+        with torch.no_grad():
+            return (self.adj_matrix > 0.5).float()
+    
+    def to_pyg_data(self):
+        """Convert to PyG Data object (without gradient tracking)"""
+        with torch.no_grad():
+            adj_binary = (self.adj_matrix > 0.5).float()
+            edge_index, edge_attr = dense_to_sparse(adj_binary)
+            return PyGData(x=self.x.detach(), edge_index=edge_index, edge_attr=edge_attr)
+    
+    def get_original_components(self):
+        """Get the original PyG Data components (for debugging)"""
+        with torch.no_grad():
+            adj_binary = (self.adj_matrix > 0.5).float()
+            edge_index, edge_attr = dense_to_sparse(adj_binary)
+            return self.x.detach(), edge_index
+
+
 class Univerifier(nn.Module):
     """
     Unified Verification Mechanism - Binary classifier that takes concatenated outputs
@@ -47,7 +113,9 @@ class GNNFingers(BaseDefense):
     supported_api_types = {"dgl"}
     
     def __init__(self, dataset, attack_node_fraction=0.2, device=None, attack_name=None,
-                 num_fingerprints=64, fingerprint_nodes=32, lambda_threshold=0.7, 
+                 num_fingerprints=64, fingerprint_nodes=32, lambda_threshold=0.7,  fingerprint_update_epochs=5, 
+                 univerifier_update_epochs=3, fingerprint_lr=0.01, 
+                 univerifier_lr=0.001, top_k_ratio=0.1, epochs=100,
                  batch_size=32, num_neighbors=[5, 5]):
         """
         Initialize GNNFingers defense framework
@@ -110,6 +178,13 @@ class GNNFingers(BaseDefense):
         self.negative_gnns = []  # Irrelevant GNNs
         self.graph_fingerprints = None
         self.univerifier = None
+
+        self.fingerprint_lr= fingerprint_lr
+        self.fingerprint_update_epochs = fingerprint_update_epochs
+        self.univerifier_update_epochs = univerifier_update_epochs
+        self.univerifier_lr = univerifier_lr
+        self.top_k_ratio = top_k_ratio
+        self.epochs= epochs
         
         # Move tensors to device
         if self.device != 'cpu':
@@ -136,7 +211,8 @@ class GNNFingers(BaseDefense):
         
         return data
    
-   
+
+ 
     # def _create_dataloaders(self, graph_data):
     #     """Create train and test dataloaders with neighbor sampling"""
     #     # For DGL graphs
@@ -229,7 +305,7 @@ class GNNFingers(BaseDefense):
         
         # Step 5: Joint learning of fingerprints and Univerifier
         print("Joint learning of fingerprints and Univerifier...")
-        self._joint_learning()
+        self._joint_learning_alternating()
         
         # Step 6: Attack target model
         print("Attacking target model...")
@@ -607,8 +683,9 @@ class GNNFingers(BaseDefense):
         return best_model
     
     def _initialize_graph_fingerprints(self):
-        """Initialize graph fingerprints for node classification task"""
-        fingerprints = []
+        """Initialize graph fingerprints as learnable parameters from PyG Data"""
+        fingerprints = nn.ModuleList()  # Use ModuleList to properly register parameters
+        feature_dim = self.features.size(1) if self.features is not None else 16
         
         for _ in range(self.num_fingerprints):
             # Initialize random graph using Erdos-Renyi model
@@ -618,11 +695,13 @@ class GNNFingers(BaseDefense):
             if self.features is not None:
                 x = torch.randn(self.fingerprint_nodes, self.features.size(1))
             else:
-                x = torch.randn(self.fingerprint_nodes, 16)  # Default feature dimension
+                x = torch.randn(self.fingerprint_nodes, 16)
             
-            # Create PyG Data object
-            fingerprint_data = PyGData(x=x, edge_index=edge_index)
-            fingerprints.append(fingerprint_data)
+            # Convert to learnable fingerprint
+            fingerprint = LearnableGraphFingerprint.from_pyg_data(
+                x, edge_index, self.fingerprint_nodes, feature_dim
+            ).to(self.device)
+            fingerprints.append(fingerprint)
         
         return fingerprints
     
@@ -634,58 +713,6 @@ class GNNFingers(BaseDefense):
                           fingerprint_data.edge_index.to(self.device))
             return output.size(1)
     
-    def _joint_learning(self, epochs=100, fingerprint_lr=0.01, univerifier_lr=0.001):
-        """Joint learning of graph fingerprints and Univerifier"""
-        fingerprint_optimizer = optim.Adam([fp.x for fp in self.graph_fingerprints] + 
-                                          [fp.edge_index for fp in self.graph_fingerprints], 
-                                          lr=fingerprint_lr)
-        univerifier_optimizer = optim.Adam(self.univerifier.parameters(), lr=univerifier_lr)
-        criterion = nn.CrossEntropyLoss()
-        
-        # Prepare all models for training
-        all_models = [self.target_gnn] + self.positive_gnns + self.negative_gnns
-        labels = torch.cat([
-            torch.ones(len(self.positive_gnns) + 1),  # Target + positive models
-            torch.zeros(len(self.negative_gnns))      # Negative models
-        ]).long().to(self.device)
-        
-        for epoch in range(epochs):
-            # Forward pass through all models
-            all_outputs = []
-            for model in all_models:
-                model_outputs = []
-                for fingerprint in self.graph_fingerprints:
-                    model.eval()
-                    with torch.no_grad():
-                        output = model(fingerprint.x.to(self.device), 
-                                      fingerprint.edge_index.to(self.device))
-                        model_outputs.append(output)
-                
-                # Concatenate all fingerprint outputs
-                concatenated = torch.cat(model_outputs, dim=0).view(1, -1)
-                all_outputs.append(concatenated)
-            
-            # Stack all outputs
-            all_outputs = torch.cat(all_outputs, dim=0)
-            
-            # Univerifier prediction
-            univerifier_out = self.univerifier(all_outputs)
-            
-            # Calculate loss
-            loss = criterion(univerifier_out, labels)
-            
-            # Backward pass
-            fingerprint_optimizer.zero_grad()
-            univerifier_optimizer.zero_grad()
-            loss.backward()
-            
-            # Update fingerprints and Univerifier
-            fingerprint_optimizer.step()
-            univerifier_optimizer.step()
-            
-            if epoch % 10 == 0:
-                print(f"Epoch {epoch}, Loss: {loss.item():.4f}")
-    
     def _verify_ownership(self, suspect_model):
         """Verify if a suspect model is pirated from the target model"""
         # Get outputs for all fingerprints
@@ -695,6 +722,8 @@ class GNNFingers(BaseDefense):
         for fingerprint in self.graph_fingerprints:
             self.target_gnn.eval()
             suspect_model.eval()
+            # Get fingerprint as PyG Data object (without gradient tracking)
+            fingerprint = fingerprint.to_pyg_data()
             
             with torch.no_grad():
                 target_out = self.target_gnn(fingerprint.x.to(self.device), 
@@ -727,214 +756,249 @@ class GNNFingers(BaseDefense):
             total = data.test_mask.sum().item()
             return correct / total if total > 0 else 0
 
-
-    # def _joint_learning_alternating(self, e1=5, e2=5, alpha=0.01, beta=0.001):
-    #     """
-    #     Implementation of Joint Learning Approach
+    def _update_adjacency_discrete(self, fingerprint, grad_adj):
+        """
+        Update discrete adjacency matrix based on gradients
+        """
+        # Get current discrete adjacency
+        current_adj = fingerprint.get_discrete_adjacency()
         
-    #     Parameters:
-    #     e1: number of fingerprint update epochs
-    #     e2: number of Univerifier update epochs  
-    #     alpha: learning rate for fingerprints
-    #     beta: learning rate for Univerifier
-    #     """
-    #     flag = 0  # 0: update fingerprints, 1: update Univerifier
-    #     convergence_threshold = 1e-4
-    #     prev_loss = float('inf')
-    #     convergence_count = 0
+        # Get absolute gradient values and flatten
+        grad_abs = torch.abs(grad_adj)
+        grad_abs_flat = grad_abs.view(-1)
         
-    #     print("Starting alternating optimization...")
+        # Determine top-K edges to consider for flipping
+        k = int(self.top_k_ratio * self.fingerprint_nodes * self.fingerprint_nodes)
+        topk_values, topk_indices = torch.topk(grad_abs_flat, k)
         
-    #     while convergence_count < 3:  # Converge if loss doesn't improve for 3 cycles
-    #         # Compute total loss L (lines 4-10)
-    #         L = 0
-    #         all_models = [self.target_gnn] + self.positive_gnns + self.negative_gnns
-            
-    #         for model_idx, model in enumerate(all_models):
-    #             # Get concatenated outputs from all fingerprints for this model
-    #             fingerprint_outputs = []
-    #             for fingerprint in self.graph_fingerprints:
-    #                 model.eval()
-    #                 with torch.no_grad():
-    #                     output = model(fingerprint.x.to(self.device), 
-    #                                 fingerprint.edge_index.to(self.device))
-    #                     fingerprint_outputs.append(output)
+        # Convert flat indices to row, col indices
+        rows = topk_indices // self.fingerprint_nodes
+        cols = topk_indices % self.fingerprint_nodes
+        
+        # Update edges based on gradient signs
+        with torch.no_grad():
+            for idx in range(k):
+                row, col = rows[idx], cols[idx]
+                grad_val = grad_adj[row, col]
                 
-    #             # Concatenate all fingerprint outputs (flattened)
-    #             concatenated = torch.cat([out.view(-1) for out in fingerprint_outputs]).unsqueeze(0)
+                # Current edge existence (0 or 1)
+                current_edge = current_adj[row, col]
                 
-    #             # Get Univerifier prediction
-    #             univerifier_out = self.univerifier(concatenated)
-    #             o_plus = univerifier_out[0, 1]  # Probability of being pirated
+                # Apply update rules:
+                if current_edge > 0.5 and grad_val <= 0:
+                    # Edge exists and gradient is negative → remove edge
+                    fingerprint.adj_matrix.data[row, col] = 0.0
+                elif current_edge < 0.5 and grad_val >= 0:
+                    # Edge doesn't exist and gradient is positive → add edge
+                    fingerprint.adj_matrix.data[row, col] = 1.0
+
+    def _update_fingerprints_discrete(self, loss, top_k_ratio=0.1):
+        """
+        Update graph fingerprints using gradients
+        """
+        # Compute gradients for all fingerprints
+        gradients_adj = []
+        gradients_x = []
+        
+        for fingerprint in self.graph_fingerprints:
+            # Compute gradients for adjacency matrix
+            grad_adj = torch.autograd.grad(
+                loss, fingerprint.adj_matrix, 
+                retain_graph=True, create_graph=False
+            )[0]
+            
+            # Compute gradients for node features
+            grad_x = torch.autograd.grad(
+                loss, fingerprint.x,
+                retain_graph=True, create_graph=False
+            )[0]
+            
+            gradients_adj.append(grad_adj)
+            gradients_x.append(grad_x)
+        
+        # Update each fingerprint
+        for i, fingerprint in enumerate(self.graph_fingerprints):
+            grad_adj = gradients_adj[i]
+            grad_x = gradients_x[i]
+            
+            # Update node features with clipping
+            with torch.no_grad():
+                fingerprint.x.data += self.fingerprint_lr * grad_x
                 
-    #             # Accumulate loss according to algorithm
-    #             if model_idx < len(self.positive_gnns) + 1:  # Target or positive model
-    #                 L += torch.log(o_plus + 1e-10)
-    #             else:  # Negative model
-    #                 L += torch.log(1 - o_plus + 1e-10)
+                # Clip node features to reasonable range
+                if self.features is not None:
+                    min_val = self.features.min().item()
+                    max_val = self.features.max().item()
+                    fingerprint.x.data = torch.clamp(fingerprint.x.data, min_val, max_val)
+                else:
+                    fingerprint.x.data = torch.clamp(fingerprint.x.data, -3, 3)
             
-    #         current_loss = -L.item()  # Negative since we're maximizing
-            
-    #         # Check convergence
-    #         if abs(prev_loss - current_loss) < convergence_threshold:
-    #             convergence_count += 1
-    #         else:
-    #             convergence_count = 0
-    #         prev_loss = current_loss
-            
-    #         print(f"Cycle loss: {current_loss:.6f}, Flag: {flag}, Convergence count: {convergence_count}")
-            
-    #         # Alternating optimization (lines 11-21)
-    #         if flag == 0:
-    #             # Update fingerprints for e1 epochs
-    #             print(f"Updating fingerprints for {e1} epochs...")
-    #             for e in range(e1):
-    #                 self._update_fingerprints_single_epoch(alpha)
-    #             flag = 1
-    #         else:
-    #             # Update Univerifier for e2 epochs
-    #             print(f"Updating Univerifier for {e2} epochs...")
-    #             for e in range(e2):
-    #                 self._update_univerifier_single_epoch(beta)
-    #             flag = 0
-        
-    #     print("Alternating optimization converged!")
+            # Update adjacency matrix using discrete strategy
+            self._update_adjacency_discrete(fingerprint, grad_adj, top_k_ratio)
 
 
-
-    # def _update_fingerprints_single_epoch(self, alpha=0.01, top_k_edges=10):
-    #     """Update fingerprints for one epoch"""
-    #     attribute_ranges = self._get_attribute_ranges()
-        
-    #     for fingerprint in self.graph_fingerprints:
-    #         # Make copies that require gradients
-    #         x_tensor = fingerprint.x.clone().detach().requires_grad_(True)
-    #         adj_dense = to_dense_adj(fingerprint.edge_index, 
-    #                             max_num_nodes=self.fingerprint_nodes)[0]
-    #         adj_tensor = adj_dense.clone().detach().requires_grad_(True)
+    def visualize_fingerprint_evolution(self, epoch):
+        """Visualize how fingerprints evolve during training"""
+        if epoch % 20 == 0:  # Visualize every 20 epochs
+            print(f"\n=== Fingerprint Evolution at Epoch {epoch} ===")
             
-    #         # Compute loss for this fingerprint
-    #         loss = self._compute_single_fingerprint_loss(x_tensor, adj_tensor)
-            
-    #         # Compute gradients
-    #         if x_tensor.grad is not None:
-    #             x_tensor.grad.zero_()
-    #         if adj_tensor.grad is not None:
-    #             adj_tensor.grad.zero_()
-            
-    #         loss.backward()
-            
-    #         # Update node attributes with gradient and clipping
-    #         if x_tensor.grad is not None:
-    #             new_x = x_tensor + alpha * x_tensor.grad
-    #             fingerprint.x = self._clip_attributes(new_x.detach(), attribute_ranges)
-            
-    #         # Update adjacency matrix using paper's discrete method
-    #         if adj_tensor.grad is not None:
-    #             self._update_adjacency_discrete(fingerprint, adj_tensor, alpha, top_k_edges)
-
-    # def _update_univerifier_single_epoch(self, beta=0.001):
-    #     """Update Univerifier for one epoch"""
-    #     optimizer = optim.Adam(self.univerifier.parameters(), lr=beta)
-        
-    #     # Compute loss for all models
-    #     L = 0
-    #     all_models = [self.target_gnn] + self.positive_gnns + self.negative_gnns
-        
-    #     for model_idx, model in enumerate(all_models):
-    #         # Get concatenated outputs from all fingerprints
-    #         fingerprint_outputs = []
-    #         for fingerprint in self.graph_fingerprints:
-    #             model.eval()
-    #             with torch.no_grad():
-    #                 output = model(fingerprint.x.to(self.device), 
-    #                             fingerprint.edge_index.to(self.device))
-    #                 fingerprint_outputs.append(output)
-            
-    #         concatenated = torch.cat([out.view(-1) for out in fingerprint_outputs]).unsqueeze(0)
-            
-    #         # Univerifier prediction
-    #         univerifier_out = self.univerifier(concatenated)
-    #         o_plus = univerifier_out[0, 1]
-            
-    #         # Accumulate loss
-    #         if model_idx < len(self.positive_gnns) + 1:  # Target or positive
-    #             L += torch.log(o_plus + 1e-10)
-    #         else:  # Negative
-    #             L += torch.log(1 - o_plus + 1e-10)
-        
-    #     # Optimization step
-    #     optimizer.zero_grad()
-    #     (-L).backward()  # Minimize negative log likelihood
-    #     optimizer.step()
-
-    # def _update_adjacency_discrete(self, fingerprint, adj_tensor, alpha, top_k_edges):
-    #     """Update adjacency matrix using paper's discrete optimization rules"""
-    #     adj_grad = adj_tensor.grad
-        
-    #     if adj_grad is None:
-    #         return
-        
-    #     # Get top-K edges with largest absolute gradient values
-    #     flat_grad = adj_grad.view(-1)
-    #     flat_abs_grad = torch.abs(flat_grad)
-    #     top_values, top_indices = torch.topk(flat_abs_grad, min(top_k_edges, flat_abs_grad.numel()))
-        
-    #     current_adj = adj_tensor.detach().clone()
-    #     current_adj.requires_grad_(False)
-        
-    #     for idx in top_indices:
-    #         if top_values[idx] < 1e-8:  # Skip very small gradients
-    #             continue
+            for i, fingerprint in enumerate(self.graph_fingerprints[:2]):  # First 2 only
+                x, edge_index = fingerprint.get_original_components()
+                current_adj = fingerprint.get_discrete_adjacency()
                 
-    #         # Convert flat index to (u, v) coordinates
-    #         u = idx // self.fingerprint_nodes
-    #         v = idx % self.fingerprint_nodes
-            
-    #         if u >= self.fingerprint_nodes or v >= self.fingerprint_nodes:
-    #             continue
-            
-    #         grad_value = adj_grad[u, v].item()
-    #         current_value = current_adj[u, v].item()
-            
-    #         # Apply paper's rules:
-    #         # 1. If edge exists and gradient <= 0: remove edge
-    #         # 2. If edge doesn't exist and gradient >= 0: add edge
-    #         if current_value > 0.5:  # Edge exists
-    #             if grad_value <= 0:
-    #                 current_adj[u, v] = 0
-    #                 current_adj[v, u] = 0  # Undirected graph
-    #         else:  # Edge doesn't exist
-    #             if grad_value >= 0:
-    #                 current_adj[u, v] = 1
-    #                 current_adj[v, u] = 1  # Undirected graph
-        
-    #     # Convert back to sparse and update fingerprint
-    #     new_edge_index = dense_to_sparse(current_adj)[0]
-    #     fingerprint.edge_index = new_edge_index
+                # Calculate statistics
+                num_edges = current_adj.sum().item()
+                sparsity = 1 - (num_edges / (self.fingerprint_nodes * self.fingerprint_nodes))
+                
+                print(f"Fingerprint {i}: {num_edges} edges, sparsity: {sparsity:.3f}")
+                
+                # Feature statistics
+                feature_mean = x.mean().item()
+                feature_std = x.std().item()
+                print(f"  Features: mean={feature_mean:.3f}, std={feature_std:.3f}")
 
-    # def _compute_single_fingerprint_loss(self, x_tensor, adj_tensor):
-    #     """Compute loss contribution from a single fingerprint"""
-    #     edge_index_sparse = dense_to_sparse(adj_tensor)[0]
-    #     loss = 0
+    def _joint_learning_alternating(self):
+        """
+        Joint learning with alternating optimization algorithm
+        """
         
-    #     # All models
-    #     all_models = [self.target_gnn] + self.positive_gnns + self.negative_gnns
+        # Prepare all models and labels
+        all_models = [self.target_gnn] + self.positive_gnns + self.negative_gnns
+        labels = torch.cat([
+            torch.ones(len(self.positive_gnns) + 1),  # Target + positive models
+            torch.zeros(len(self.negative_gnns))      # Negative models
+        ]).long().to(self.device)
         
-    #     for model_idx, model in enumerate(all_models):
-    #         model_out = model(x_tensor, edge_index_sparse)
-    #         concat_out = model_out.view(1, -1)
-    #         univerifier_out = self.univerifier(concat_out)
-    #         o_plus = univerifier_out[0, 1]
+        # Flag to alternate between fingerprint and univerifier updates
+        update_fingerprints = True
+        
+        for epoch in range(self.epochs):
+            # Forward pass through all models using the actual discrete structure
+            all_outputs = []
+            for model in all_models:
+                model_outputs = []
+                for fingerprint in self.graph_fingerprints:
+                    model.eval()
+                    
+                    # Get fingerprint as PyG Data object (this uses straight-through estimator)
+                    fingerprint_data = fingerprint(return_pyg_data=True)
+                    
+                    with torch.no_grad():
+                        # Pass through the model
+                        output = model(fingerprint_data.x, fingerprint_data.edge_index)
+                        model_outputs.append(output)
+                
+                # Concatenate all fingerprint outputs
+                concatenated = torch.cat(model_outputs, dim=0).view(1, -1)
+                all_outputs.append(concatenated)
             
-    #         if model_idx < len(self.positive_gnns) + 1:  # Target or positive
-    #             loss += torch.log(o_plus + 1e-10)
-    #         else:  # Negative
-    #             loss += torch.log(1 - o_plus + 1e-10)
+            # Stack all outputs
+            all_outputs = torch.cat(all_outputs, dim=0)
+            
+            # Univerifier prediction
+            univerifier_out = self.univerifier(all_outputs)
+            
+            # Calculate joint loss
+            loss = 0
+            for i, model in enumerate(all_models):
+                if i < len(self.positive_gnns) + 1:  # Target + positive models
+                    # log o_+(F) and log o_+(F_+) terms
+                    loss += torch.log(univerifier_out[i, 1] + 1e-10)
+                else:  # Negative models
+                    # log o_-(F_-) term
+                    loss += torch.log(1 - univerifier_out[i, 1] + 1e-10)
+            
+            loss = -loss  # Negative log likelihood (minimize negative log likelihood)
+            
+            # Alternating optimization
+            if update_fingerprints:
+                # Phase 1: Update fingerprints for e1 epochs
+                for e in range(self.fingerprint_update_epochs):
+                    self._update_fingerprints_discrete(loss, self.top_k_ratio)
+                
+                update_fingerprints = False
+                print(f"Epoch {epoch}: Updated fingerprints, Loss: {loss.item():.4f}")
+                
+            else:
+                # Phase 2: Update Univerifier for e2 epochs
+                univerifier_optimizer = optim.Adam(self.univerifier.parameters(), lr=self.univerifier_lr)
+                
+                for e in range(self.univerifier_update_epochs):
+                    univerifier_optimizer.zero_grad()
+                    loss.backward(retain_graph=True)
+                    univerifier_optimizer.step()
+                
+                update_fingerprints = True
+                print(f"Epoch {epoch}: Updated Univerifier, Loss: {loss.item():.4f}")
+            
+            # Calculate accuracy every 10 epochs
+            if epoch % 10 == 0:
+                with torch.no_grad():
+                    preds = univerifier_out.argmax(dim=1)
+                    acc = (preds == labels).float().mean().item()
+                    
+                    # Calculate true positive and true negative rates
+                    tp_mask = (preds == 1) & (labels == 1)
+                    tn_mask = (preds == 0) & (labels == 0)
+                    
+                    tp_rate = tp_mask.float().mean().item() if (labels == 1).sum() > 0 else 0
+                    tn_rate = tn_mask.float().mean().item() if (labels == 0).sum() > 0 else 0
+                    
+                    print(f"Epoch {epoch}, Acc: {acc:.4f}, TP: {tp_rate:.4f}, TN: {tn_rate:.4f}")
+            
+            # Visualize fingerprint evolution
+            if epoch % 20 == 0:
+                self.visualize_fingerprint_evolution(epoch)
+
+
+    def _verify_ownership_detailed(self, suspect_model):
+        """Detailed verification for debugging purposes only"""
+        suspect_outputs = []
+        target_outputs = []
         
-    #     return loss
+        for fingerprint in self.graph_fingerprints:
+            suspect_model.eval()
+            self.target_gnn.eval()
+            
+            fingerprint_data = fingerprint.to_pyg_data()
+            
+            with torch.no_grad():
+                suspect_out = suspect_model(
+                    fingerprint_data.x.to(self.device), 
+                    fingerprint_data.edge_index.to(self.device)
+                )
+                suspect_outputs.append(suspect_out)
+                
+                target_out = self.target_gnn(
+                    fingerprint_data.x.to(self.device),
+                    fingerprint_data.edge_index.to(self.device)
+                )
+                target_outputs.append(target_out)
+        
+        suspect_concat = torch.cat(suspect_outputs, dim=0).view(1, -1)
+        target_concat = torch.cat(target_outputs, dim=0).view(1, -1)
+        
+        self.univerifier.eval()
+        with torch.no_grad():
+            suspect_prediction = self.univerifier(suspect_concat)
+            suspect_confidence = suspect_prediction[0, 1].item()
+            
+            target_prediction = self.univerifier(target_concat)
+            target_confidence = target_prediction[0, 1].item()
+        
+        output_similarity = F.cosine_similarity(suspect_concat, target_concat).item()
+        is_pirated = suspect_confidence > self.lambda_threshold
+        
+        # Return detailed info for debugging, but main method keeps original interface
+        return {
+            'is_pirated': is_pirated,
+            'confidence': suspect_confidence,
+            'target_confidence': target_confidence,
+            'output_similarity': output_similarity,
+            'lambda_threshold': self.lambda_threshold
+        }
 
-
+    
 # GNN Model Definitions
 class GCNConvGNN(nn.Module):
     """GCN-based GNN model"""
@@ -984,7 +1048,3 @@ class GATConvGNN(nn.Module):
                 x = F.elu(x)
                 x = F.dropout(x, training=self.training, p=0.6)
         return x
-    
-
-
-
