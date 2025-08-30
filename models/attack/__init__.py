@@ -1,3 +1,4 @@
+from .my_custom_attack import MyCustomAttack   # ⬅ add this line
 from .AdvMEA import AdvMEA
 from .mea.MEA import (
     ModelExtractionAttack0,
@@ -16,4 +17,5 @@ __all__ = [
     'ModelExtractionAttack3',
     'ModelExtractionAttack4',
     'ModelExtractionAttack5',
+    'MyCustomAttack',   # ⬅ add this too
 ]
