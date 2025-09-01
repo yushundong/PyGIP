@@ -1,0 +1,131 @@
+Metadata-Version: 2.4
+Name: pygip
+Version: 0.1.0
+Summary: A Python package for Graph Intellectual Property Protection
+Home-page: https://github.com/pygip/pygip
+Author: Bolin Shen
+Author-email: blshen@fsu.edu
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Science/Research
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.7
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: torch>=1.7.0
+Requires-Dist: dgl>=0.6.0
+Requires-Dist: torch-geometric>=2.0.0
+Requires-Dist: numpy>=1.19.0
+Requires-Dist: scipy>=1.6.0
+Requires-Dist: networkx>=2.5
+Requires-Dist: scikit-learn>=0.24.0
+Requires-Dist: tqdm>=4.50.0
+Provides-Extra: dev
+Requires-Dist: pytest>=6.0; extra == "dev"
+Requires-Dist: pytest-cov>=2.0; extra == "dev"
+Requires-Dist: flake8>=3.9.0; extra == "dev"
+Requires-Dist: black>=21.5b2; extra == "dev"
+Requires-Dist: isort>=5.8.0; extra == "dev"
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: license-file
+Dynamic: provides-extra
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
+
+# PyGIP
+
+PyGIP is a Python library designed for experimenting with graph-based model extraction attacks and defenses. It provides
+a modular framework to implement and test attack and defense strategies on graph datasets.
+
+## Installation
+
+To get started with PyGIP, set up your environment by installing the required dependencies:
+
+```bash
+pip install -r reqs.txt
+```
+
+Ensure you have Python installed (version 3.8 or higher recommended) along with the necessary libraries listed
+in `reqs.txt`.
+
+Specifically, using following command to install `dgl 2.2.1` and ensure your `pytorch==2.3.0`.
+
+```shell
+pip install dgl==2.2.1 -f https://data.dgl.ai/wheels/torch-2.3/repo.html
+```
+
+cuda
+
+```shell
+pip install dgl==2.2.1 -f https://data.dgl.ai/wheels/torch-2.3/cu118/repo.html
+```
+
+## Quick Start
+
+Here’s a simple example to launch a Model Extraction Attack using PyGIP:
+
+```python
+from datasets import Cora
+from models.attack import ModelExtractionAttack0
+
+# Load the Cora dataset
+dataset = Cora()
+
+# Initialize the attack with a sampling ratio of 0.25
+mea = ModelExtractionAttack0(dataset, 0.25)
+
+# Execute the attack
+mea.attack()
+```
+
+This code loads the Cora dataset, initializes a basic model extraction attack (`ModelExtractionAttack0`), and runs the
+attack with a specified sampling ratio.
+
+And a simple example to run a Defense method against Model Extraction Attack:
+
+```python
+from datasets import Cora
+from models.defense import RandomWM
+
+# Load the Cora dataset
+dataset = Cora()
+
+# Initialize the attack with a sampling ratio of 0.25
+mead = RandomWM(dataset, 0.25)
+
+# Execute the attack
+mead.defend()
+```
+
+which runs the Random Watermarking Graph to defend against MEA.
+
+If you want to use cuda, please set environment variable:
+
+```shell
+export PYGIP_DEVICE=cuda:0
+```
+
+## Implementation & Contributors Guideline
+
+Refer to [Implementation Guideline](.github/IMPLEMENTATION.md)
+
+Refer to [Contributors Guideline](.github/CONTRIBUTING.md)
+
+## License
+
+MIT License
+
+## Contact
+
+For questions or contributions, please contact blshen@fsu.edu.
