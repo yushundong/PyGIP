@@ -63,7 +63,7 @@ class GNNFingers(BaseDefense):
         attack_name : str
             Name of the attack class to use
         num_fingerprints : int
-            Number of graph fingerprints to generate
+            Number of graph fingerprints to generatea
         fingerprint_nodes : int
             Number of nodes in each fingerprint graph
         lambda_threshold : float
