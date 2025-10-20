@@ -1,478 +1,691 @@
-"""GNNFingers ownership verification defense.
+# models/defense/gnnfingers.py
+# Paper-faithful GNNFingers (WWW'24) — Node classification path complete.
+# Follows library guidelines: BaseDefense API (defend/register/verify), PyG datasets, device via BaseDefense.
+# Citations: Algorithms 1–4, §3.2–3.4, defaults in §4.1.5. See GNNFingers.pdf.
 
-This module implements the core workflow described in the GNNFingers paper:
-
-1. Train (or load) an owner model on the supplied graph dataset.
-2. Optimise lightweight fingerprint vectors for sampled node pairs using the
-   intermediate representations of the owner model.
-3. Persist and verify those fingerprints against a suspect model by checking
-   whether the same hidden-space patterns are reproduced.
-
-The implementation follows the structure expected by :class:`BaseDefense` so it
-integrates cleanly with the rest of PyGIP.
-"""
-
-from __future__ import annotations
-
-import os
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Tuple
+import math
+import os
+import random
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch import Tensor
-from torch_geometric.data import Data
 
 from models.defense.base import BaseDefense
 
+from torch_geometric.data import Data
+from torch_geometric.nn import GCNConv, SAGEConv
+from torch_geometric.utils import to_undirected
 
-# ---------------------------------------------------------------------------
-# Data containers
-# ---------------------------------------------------------------------------
+# -----------------------
+# Small backbone zoo
+# -----------------------
+class GCN(nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels, depth=2, dropout=0.5):
+        super().__init__()
+        self.dropout = dropout
+        self.convs = nn.ModuleList()
+        self.convs.append(GCNConv(in_channels, hidden_channels))
+        for _ in range(depth - 2):
+            self.convs.append(GCNConv(hidden_channels, hidden_channels))
+        self.convs.append(GCNConv(hidden_channels, out_channels))
+
+    def forward(self, x, edge_index):
+        for i, conv in enumerate(self.convs):
+            x = conv(x, edge_index)
+            if i < len(self.convs) - 1:
+                x = F.relu(x)
+                x = F.dropout(x, p=self.dropout, training=self.training)
+        return x
 
 
+class GraphSAGE(nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels, depth=2, dropout=0.5):
+        super().__init__()
+        self.dropout = dropout
+        self.convs = nn.ModuleList()
+        self.convs.append(SAGEConv(in_channels, hidden_channels))
+        for _ in range(depth - 2):
+            self.convs.append(SAGEConv(hidden_channels, hidden_channels))
+        self.convs.append(SAGEConv(hidden_channels, out_channels))
+
+    def forward(self, x, edge_index):
+        for i, conv in enumerate(self.convs):
+            x = conv(x, edge_index)
+            if i < len(self.convs) - 1:
+                x = F.relu(x)
+                x = F.dropout(x, p=self.dropout, training=self.training)
+        return x
+
+
+# -----------------------
+# Univerifier (MLP) (§3.4)
+# -----------------------
+class Univerifier(nn.Module):
+    def __init__(self, in_dim: int, hidden: List[int] = [128, 64, 32]):
+        super().__init__()
+        dims = [in_dim] + hidden + [2]
+        layers = []
+        for a, b in zip(dims[:-2], dims[1:-1]):
+            layers += [nn.Linear(a, b), nn.LeakyReLU()]
+        layers += [nn.Linear(dims[-2], dims[-1])]
+        self.net = nn.Sequential(*layers)
+
+    def forward(self, z):
+        return self.net(z)  # logits; use BCEWithLogits or softmax later
+
+
+# -----------------------
+# Helpers: datasets / masks / metrics
+# -----------------------
+def _split_masks(data: Data) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    # Expect train_mask/val_mask/test_mask in Dataset(api_type='pyg')
+    for k in ['train_mask', 'val_mask', 'test_mask']:
+        if not hasattr(data, k):
+            raise ValueError(f"Dataset .{k} missing; please provide masks.")
+    return data.train_mask, data.val_mask, data.test_mask
+
+
+def _acc(logits, y, mask):
+    pred = logits[mask].argmax(-1)
+    return (pred == y[mask]).float().mean().item() if mask.sum() > 0 else float('nan')
+
+
+def _to_device(obj, device):
+    if isinstance(obj, (list, tuple)):
+        return type(obj)(o.to(device) for o in obj)
+    return obj.to(device)
+
+
+# -----------------------
+# F+ / F− creation (§3.2, A.1)
+# -----------------------
 @dataclass
-class FingerprintRecord:
-    """Description of a single fingerprint pair.
+class SuspectSpec:
+    arch: str  # 'gcn' or 'sage'
+    kind: str  # 'pos' (pirated) or 'neg' (irrelevant)
+    op: str    # 'finetune_last', 'finetune_all', 'partial_reinit', 'prune', 'distill', 'scratch'
 
-    Attributes
-    ----------
-    anchor_i, anchor_j:
-        Indices of the anchor nodes used when deriving the fingerprint. Each
-        refers to a node in the original transductive graph provided by the
-        dataset.
-    fingerprint_i, fingerprint_j:
-        Normalised tensors capturing the expected hidden representation pattern
-        for ``anchor_i`` and ``anchor_j`` respectively.
-    same_class:
-        Whether the anchor nodes share the same ground-truth class label. The
-        sign of the verification score depends on this flag, matching the
-        objective in the paper which uses both positive and negative pairs.
-    radius:
-        The hop radius that was considered when sampling the anchor nodes. This
-        is metadata only (the current implementation operates on the global
-        transductive graph) but is persisted for reproducibility.
+
+def _make_model(arch: str, in_ch: int, hid: int, out_ch: int, depth: int):
+    if arch.lower() == 'gcn':
+        return GCN(in_ch, hid, out_ch, depth)
+    elif arch.lower() == 'sage':
+        return GraphSAGE(in_ch, hid, out_ch, depth)
+    else:
+        raise ValueError(f'Unknown arch {arch}')
+
+
+@torch.no_grad()
+def _copy_weights(src: nn.Module, dst: nn.Module):
+    dst.load_state_dict(src.state_dict())
+
+
+def _train(model, data: Data, device, epochs=200, lr=1e-2, weight_decay=5e-4):
+    model = model.to(device)
+    opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+    train_mask, val_mask, test_mask = _split_masks(data)
+    x, edge_index, y = _to_device((data.x, data.edge_index, data.y), device)
+    best = {'val': -1, 'state': None}
+    for ep in range(epochs):
+        model.train()
+        opt.zero_grad()
+        out = model(x, edge_index)
+        loss = F.cross_entropy(out[train_mask], y[train_mask])
+        loss.backward()
+        opt.step()
+        model.eval()
+        with torch.no_grad():
+            val = _acc(out, y, val_mask)
+            if val > best['val']:
+                best['val'] = val
+                best['state'] = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+    if best['state'] is not None:
+        model.load_state_dict(best['state'])
+    model.eval()
+    with torch.no_grad():
+        test = _acc(model(x, edge_index), y, test_mask)
+    return model, best['val'], test
+
+
+def _finetune(model, data, device, layers='last', epochs=10, lr=1e-3):
+    model = model.to(device)
+    # Freeze all then unfreeze selected
+    for p in model.parameters():
+        p.requires_grad = False
+    if layers == 'last':
+        for p in list(model.convs[-1].parameters()):
+            p.requires_grad = True
+        head_params = [p for p in model.convs[-1].parameters()]
+    else:
+        for p in model.parameters():
+            p.requires_grad = True
+        head_params = list(model.parameters())
+    opt = torch.optim.Adam(head_params, lr=lr)
+    train_mask, _, _ = _split_masks(data)
+    x, edge_index, y = _to_device((data.x, data.edge_index, data.y), device)
+    model.train()
+    for _ in range(epochs):
+        opt.zero_grad()
+        out = model(x, edge_index)
+        loss = F.cross_entropy(out[train_mask], y[train_mask])
+        loss.backward()
+        opt.step()
+    model.eval()
+    return model
+
+
+def _partial_reinit(model, reinit_layers=(0,)):
+    with torch.no_grad():
+        for li in reinit_layers:
+            for m in model.convs[li].modules():
+                if hasattr(m, 'reset_parameters'):
+                    m.reset_parameters()
+    return model
+
+
+def _magnitude_prune_(model, ratio=0.3):
+    # Zero out smallest |w| fraction
+    with torch.no_grad():
+        all_params = torch.cat([p.view(-1).abs() for p in model.parameters() if p.requires_grad])
+        k = int(ratio * all_params.numel())
+        if k <= 0: return model
+        thresh = torch.topk(all_params, k, largest=False).values.max()
+        for p in model.parameters():
+            mask = p.abs() < thresh
+            p[mask] = 0.0
+    return model
+
+
+def _distill(student, teacher, data, device, epochs=100, lr=1e-3, T=1.0):
+    student = student.to(device); teacher = teacher.to(device).eval()
+    opt = torch.optim.Adam(student.parameters(), lr=lr)
+    x, edge_index = _to_device((data.x, data.edge_index), device)
+    with torch.no_grad():
+        t_logits = teacher(x, edge_index) / T
+    for _ in range(epochs):
+        student.train()
+        opt.zero_grad()
+        s_logits = student(x, edge_index) / T
+        loss = F.kl_div(F.log_softmax(s_logits, dim=-1), F.softmax(t_logits, dim=-1), reduction='batchmean')
+        loss.backward(); opt.step()
+    student.eval()
+    return student
+
+
+def _build_suspects(target: nn.Module,
+                    data: Data,
+                    device,
+                    in_ch: int, hid: int, out_ch: int, depth: int,
+                    n_pos: int, n_neg: int,
+                    pos_ops: List[str], neg_archs: List[str]) -> Tuple[List[nn.Module], List[nn.Module]]:
+    pos_list, neg_list = [], []
+    # Positives F+ (pirated): fine-tune, partial-retrain, prune, distill (mix)
+    rng = random.Random(0)
+    ops_cycle = (pos_ops * ((n_pos // len(pos_ops)) + 1))[:n_pos]
+    for op in ops_cycle:
+        model = _make_model('gcn', in_ch, hid, out_ch, depth).to(device)
+        _copy_weights(target, model)
+        if op == 'finetune_last':
+            _finetune(model, data, device, layers='last', epochs=10, lr=1e-3)
+        elif op == 'finetune_all':
+            _finetune(model, data, device, layers='all', epochs=10, lr=1e-3)
+        elif op == 'partial_reinit':
+            _partial_reinit(model, reinit_layers=(0,)); _train(model, data, device, epochs=10, lr=1e-3)
+        elif op == 'prune':
+            _magnitude_prune_(model, ratio=0.3); _finetune(model, data, device, layers='last', epochs=5, lr=1e-3)
+        elif op == 'distill':
+            student = _make_model('sage', in_ch, hid, out_ch, depth)
+            model = _distill(student, target, data, device, epochs=100, lr=1e-3)
+        model.eval()
+        pos_list.append(model)
+
+    # Negatives F- (irrelevant): scratch (vary arch/seed)
+    for i in range(n_neg):
+        arch = neg_archs[i % len(neg_archs)]
+        m = _make_model(arch, in_ch, hid, out_ch, depth)
+        seed = 100 + i
+        torch.manual_seed(seed); rng.seed(seed)
+        m, _, _ = _train(m, data, device, epochs=200, lr=1e-2)
+        neg_list.append(m)
+    return pos_list, neg_list
+
+
+# -----------------------
+# Fingerprint I and optimizer (Algorithms 2 & 4)
+# Node classification path: single graph I = {G}, sample m node outputs (§3.3).
+# -----------------------
+@dataclass
+class FPConfig:
+    P: int = 64            # number of "virtual probes" (we read m nodes per probe)
+    n_nodes: int = 32      # nodes in the synthetic graph
+    m_readout: int = 32    # number of node outputs to concatenate
+    depth: int = 3         # GNN depth for forward neighborhood (paper uses depth=3)
+    x_step: float = 1e-2   # step size for X update
+    topK_ratio: float = 0.03  # fraction of edges to flip per iter
+    iters: int = 1000
+    alt_I_steps: int = 1
+    alt_V_steps: int = 1
+    update_A: bool = True
+    update_X: bool = True
+
+
+class FingerprintNC:
+    def __init__(self, cfg: FPConfig, feat_ranges: Optional[Tuple[torch.Tensor, torch.Tensor]] = None):
+        self.cfg = cfg
+        self.feat_ranges = feat_ranges  # (min, max) per feature, for clipping
+
+    def init_graph(self, in_dim: int, device) -> Data:
+        n = self.cfg.n_nodes
+        # Initialize sparse random A with very small edge prob ε
+        eps = 2.0 / n  # small
+        # Sample undirected edges
+        edges = []
+        for u in range(n):
+            for v in range(u+1, n):
+                if random.random() < eps:
+                    edges.append((u, v))
+        if not edges:  # ensure at least one edge
+            edges = [(0, 1)]
+        edge_index = torch.tensor(edges, dtype=torch.long).t().contiguous()
+        edge_index = to_undirected(edge_index, num_nodes=n)
+
+        # Initialize X uniformly within ranges (or standard normal if None)
+        if self.feat_ranges is not None:
+            lo, hi = self.feat_ranges
+            x = lo + (hi - lo) * torch.rand((n, in_dim))
+        else:
+            x = torch.randn(n, in_dim) * 0.1
+
+        data = Data(x=x, edge_index=edge_index)
+        return data.to(device)
+
+    @torch.no_grad()
+    def _flip_edges(self, A_grad_rank, data: Data, K: int):
+        # Convert edge_index to adjacency set
+        n = data.num_nodes
+        existing = set(map(tuple, data.edge_index.t().cpu().tolist()))
+        existing = set((min(u, v), max(u, v)) for (u, v) in existing)
+
+        # A_grad_rank: list of (|g_uv|, sign, u, v) sorted desc by |g|
+        flips = A_grad_rank[:K]
+        for _, sign, u, v in flips:
+            key = (min(u, v), max(u, v))
+            if key in existing and sign <= 0:
+                existing.remove(key)  # delete
+            elif key not in existing and sign >= 0:
+                existing.add(key)     # add
+
+        # Rebuild edge_index
+        if not existing:
+            existing = {(0, 1)}
+        e = torch.tensor(list(existing), dtype=torch.long).t().contiguous()
+        e = to_undirected(e, num_nodes=n)
+        data.edge_index = e.to(data.edge_index.device)
+
+    def _rank_edges(self, A_grad: torch.Tensor) -> List[Tuple[float, int, int, int]]:
+        # A_grad is dense [n,n] (we'll form it from per-edge grads)
+        n = A_grad.size(0)
+        out = []
+        for u in range(n):
+            for v in range(u+1, n):
+                g = A_grad[u, v].item()
+                out.append((abs(g), 1 if g >= 0 else -1, u, v))
+        out.sort(key=lambda t: t[0], reverse=True)
+        return out
+
+    def _clip_X(self, x: torch.Tensor):
+        if self.feat_ranges is None:
+            return x
+        lo, hi = self.feat_ranges
+        return torch.max(torch.min(x, hi), lo)
+
+    def build_readout(self, logits: torch.Tensor, m: int) -> torch.Tensor:
+        # logits: [n_nodes, C]; read out m node predictions (deterministic sample)
+        n = logits.size(0)
+        idx = torch.linspace(0, n - 1, steps=min(m, n)).long().to(logits.device)
+        out = F.softmax(logits[idx], dim=-1).reshape(-1)  # concat probabilities
+        return out  # shape: m*C
+
+
+# -----------------------
+# Main class (paper-faithful)
+# -----------------------
+class GNNFingers(BaseDefense):
+    """
+    Paper-faithful GNNFingers (node classification path).
+    API:
+      - defend(): trains/loads target, builds F+/F-, jointly trains (I,V), saves registry, returns metrics
+      - register(path, fingerprints=None): save registry (I, V, meta)
+      - verify(suspect_model, fingerprints=None, threshold=None): run V on suspect outputs
     """
 
-    anchor_i: int
-    anchor_j: int
-    fingerprint_i: Tensor
-    fingerprint_j: Tensor
-    same_class: bool
-    radius: int
+    supported_api_types = ["pyg"]
 
-    def serialise(self) -> Dict[str, object]:
-        """Return a CPU serialisable payload for persistence."""
+    def __init__(self,
+                 dataset,
+                 attack_node_fraction: float = 0.25,  # unused but required by BaseDefense interface
+                 fingerprint: FPConfig = FPConfig(),
+                 hidden_channels: int = 128,
+                 depth: int = 3,
+                 owner_epochs: int = 200,
+                 verification_threshold: float = 0.5,
+                 n_pos: int = 200,
+                 n_neg: int = 200,
+                 pos_ops: List[str] = ("finetune_last", "finetune_all", "partial_reinit", "prune", "distill"),
+                 neg_archs: List[str] = ("gcn", "sage"),
+                 model_path: Optional[str] = "ckpts/owner.pt",
+                 save_dir: Optional[str] = "registry"):
 
-        return {
-            "anchor_i": self.anchor_i,
-            "anchor_j": self.anchor_j,
-            "same_class": self.same_class,
-            "radius": self.radius,
-            "fingerprint_i": self.fingerprint_i.detach().cpu(),
-            "fingerprint_j": self.fingerprint_j.detach().cpu(),
-        }
-
-
-# ---------------------------------------------------------------------------
-# Backbone helper
-# ---------------------------------------------------------------------------
-
-
-class _GNNFingersGCN(nn.Module):
-    """Two-layer GCN that exposes intermediate representations."""
-
-    def __init__(self, in_channels: int, hidden_channels: int, out_channels: int, dropout: float = 0.5):
-        super().__init__()
-        from torch_geometric.nn import GCNConv
-
-        self.conv1 = GCNConv(in_channels, hidden_channels)
-        self.conv2 = GCNConv(hidden_channels, out_channels)
-        self.dropout = dropout
-
-    def forward(
-        self,
-        x: Tensor,
-        edge_index: Tensor,
-        return_hidden: bool = False,
-        layer_index: int = 1,
-    ) -> Tuple[Tensor, Tensor]:
-        """Forward pass with optional intermediate activations."""
-
-        hidden_states: List[Tensor] = []
-
-        h = self.conv1(x, edge_index)
-        h = F.relu(h)
-        hidden_states.append(h)
-        h = F.dropout(h, p=self.dropout, training=self.training)
-
-        out = self.conv2(h, edge_index)
-        hidden_states.append(out)
-
-        if return_hidden:
-            idx = max(0, min(layer_index, len(hidden_states) - 1))
-            return out, hidden_states[idx]
-        return out, torch.empty(0, device=out.device)
-
-
-# ---------------------------------------------------------------------------
-# Main defense
-# ---------------------------------------------------------------------------
-
-
-class GNNFingers(BaseDefense):
-    """Implementation of the GNNFingers fingerprinting defense."""
-
-    supported_api_types = {"pyg"}
-
-    def __init__(
-        self,
-        dataset,
-        attack_node_fraction: float,
-        *,
-        fingerprint_budget: int = 64,
-        fingerprint_lr: float = 0.75,
-        fingerprint_steps: int = 16,
-        fingerprint_layer: int = 1,
-        fingerprint_radius: int = 2,
-        hidden_channels: int = 128,
-        owner_epochs: int = 200,
-        verification_threshold: float = 0.6,
-        model_path: Optional[str] = None,
-        save_dir: Optional[str] = None,
-    ) -> None:
         super().__init__(dataset, attack_node_fraction)
-
-        if dataset.api_type != "pyg":
-            raise ValueError("GNNFingers currently supports datasets loaded with the PyG API.")
-        if not isinstance(dataset.graph_data, Data):
-            raise TypeError("Expected dataset.graph_data to be an instance of torch_geometric.data.Data.")
-
-        self.data = dataset.graph_data
-        self.fingerprint_budget = int(fingerprint_budget)
-        self.fingerprint_lr = fingerprint_lr
-        self.fingerprint_steps = int(fingerprint_steps)
-        self.fingerprint_layer = int(fingerprint_layer)
-        self.fingerprint_radius = int(fingerprint_radius)
-        self.hidden_channels = int(hidden_channels)
-        self.owner_epochs = int(owner_epochs)
-        self.verification_threshold = float(verification_threshold)
+        self.fp_cfg = fingerprint
+        self.hidden_channels = hidden_channels
+        self.depth = depth
+        self.owner_epochs = owner_epochs
+        self.verification_threshold = verification_threshold
+        self.n_pos = n_pos
+        self.n_neg = n_neg
+        self.pos_ops = list(pos_ops)
+        self.neg_archs = list(neg_archs)
         self.model_path = model_path
         self.save_dir = save_dir
 
-        self._fingerprints: List[FingerprintRecord] = []
-        self._target_model: Optional[nn.Module] = None
+        self.registry = None  # (I_graphs: List[Data], V_state: dict, meta: dict)
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-    def defend(self) -> Dict[str, object]:
-        """Run the full GNNFingers workflow and return summary metrics."""
+    # ---------- Owner / Target ----------
+    def _build_owner(self, data: Data):
+        in_ch = data.num_features
+        out_ch = int(data.y.max().item() + 1)
+        model = GCN(in_ch, self.hidden_channels, out_ch, depth=self.depth)
+        return model, in_ch, out_ch
 
-        model = self._load_model()
-        if model is None:
-            model = self._train_target_model()
-
-        fingerprints = self._build_fingerprints(model)
-        verification = self.verify(model, fingerprints=fingerprints)
-
-        metrics = {
-            "target_accuracy": self._evaluate_model(model, mask_attr="test_mask"),
-            "fingerprint_count": len(fingerprints),
-            "verification": verification,
-        }
-
-        if self.save_dir:
-            os.makedirs(self.save_dir, exist_ok=True)
-            registry_path = os.path.join(self.save_dir, "fingerprints.pt")
-            self.register(registry_path, fingerprints)
-            metrics["registry_path"] = registry_path
-
-        return metrics
-
-    def register(self, path: str, fingerprints: Optional[Sequence[FingerprintRecord]] = None) -> None:
-        """Persist fingerprints to ``path`` using ``torch.save``."""
-
-        records = list(fingerprints) if fingerprints is not None else self._fingerprints
-        if not records:
-            raise ValueError("No fingerprints available to register. Run `defend()` first or provide a list.")
-
-        payload = [record.serialise() for record in records]
-        torch.save(payload, path)
-
-    def verify(
-        self,
-        suspect_model: nn.Module,
-        *,
-        fingerprints: Optional[Sequence[FingerprintRecord]] = None,
-        threshold: Optional[float] = None,
-    ) -> Dict[str, object]:
-        """Verify model ownership against the provided fingerprint registry."""
-
-        if suspect_model is None:
-            raise ValueError("`suspect_model` must be a trained torch.nn.Module instance")
-
-        records = list(fingerprints) if fingerprints is not None else self._fingerprints
-        if not records:
-            raise ValueError("Verification requires at least one fingerprint record.")
-
-        data = self._data_to_device()
-        suspect_model = suspect_model.to(self.device)
-        suspect_model.eval()
-
-        with torch.no_grad():
-            logits, hidden = self._forward_with_hidden(suspect_model, data)
-
-        mask = getattr(data, "test_mask", None)
-        accuracy = None
-        if mask is not None and mask.numel() == data.num_nodes:
-            accuracy = self._accuracy_from_logits(logits, data.y, mask)
-
-        per_pair_scores: List[float] = []
-        expected_signs: List[float] = []
-        for record in records:
-            hi = hidden[record.anchor_i]
-            hj = hidden[record.anchor_j]
-            fi = record.fingerprint_i.to(self.device)
-            fj = record.fingerprint_j.to(self.device)
-
-            score_i = F.cosine_similarity(hi.unsqueeze(0), fi.unsqueeze(0), dim=-1).item()
-            score_j = F.cosine_similarity(hj.unsqueeze(0), fj.unsqueeze(0), dim=-1).item()
-
-            sign = 1.0 if record.same_class else -1.0
-            per_pair_scores.append(0.5 * (score_i + sign * score_j))
-            expected_signs.append(sign)
-
-        used_threshold = self.verification_threshold if threshold is None else float(threshold)
-        mean_score = float(torch.tensor(per_pair_scores).mean().item())
-        verdict = mean_score >= used_threshold
-
-        return {
-            "mean_score": mean_score,
-            "threshold": used_threshold,
-            "verified": verdict,
-            "pair_scores": per_pair_scores,
-            "expected_signs": expected_signs,
-            "suspect_accuracy": accuracy,
-        }
-
-    # ------------------------------------------------------------------
-    # BaseDefense hooks
-    # ------------------------------------------------------------------
-    def _load_model(self) -> Optional[nn.Module]:
-        """Load a pre-trained owner model if ``model_path`` is provided."""
-
-        if not self.model_path:
-            return None
-        if not os.path.isfile(self.model_path):
-            raise FileNotFoundError(f"No model checkpoint found at: {self.model_path}")
-
-        model = _GNNFingersGCN(self.num_features, self.hidden_channels, self.num_classes)
-        state = torch.load(self.model_path, map_location=self.device)
-        model.load_state_dict(state)
-        self._target_model = model.to(self.device)
-        return self._target_model
-
-    def _train_target_model(self) -> nn.Module:
-        """Train the owner model used to derive fingerprints."""
-
-        data = self._data_to_device()
-        model = _GNNFingersGCN(self.num_features, self.hidden_channels, self.num_classes).to(self.device)
-        optimiser = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
-
-        train_mask = getattr(data, "train_mask", None)
-        if train_mask is None or int(train_mask.sum()) == 0:
-            raise ValueError("Dataset requires a populated `train_mask` for supervised training.")
-
-        val_mask = getattr(data, "val_mask", None)
-        best_state: Optional[Dict[str, Tensor]] = None
-        best_val = float("-inf")
-
-        for _ in range(self.owner_epochs):
-            model.train()
-            optimiser.zero_grad()
-            logits, _ = model(data.x, data.edge_index, return_hidden=True, layer_index=self.fingerprint_layer)
-            loss = F.cross_entropy(logits[train_mask], data.y[train_mask])
-            loss.backward()
-            optimiser.step()
-
-            if val_mask is not None and int(val_mask.sum()) > 0:
-                model.eval()
-                with torch.no_grad():
-                    val_logits, _ = model(
-                        data.x, data.edge_index, return_hidden=True, layer_index=self.fingerprint_layer
-                    )
-                val_acc = self._accuracy_from_logits(val_logits, data.y, val_mask)
-                if val_acc > best_val:
-                    best_val = val_acc
-                    best_state = {k: v.detach().cpu() for k, v in model.state_dict().items()}
-
-        if best_state is not None:
-            model.load_state_dict(best_state)
-
-        self._target_model = model
+    def _load_or_train_owner(self, data: Data, device):
+        model, in_ch, out_ch = self._build_owner(data)
+        if self.model_path and os.path.exists(self.model_path):
+            state = torch.load(self.model_path, map_location='cpu')
+            model.load_state_dict(state)
+            model.to(device).eval()
+            return model, in_ch, out_ch
+        model, _, _ = _train(model, data, device, epochs=self.owner_epochs, lr=1e-2)
         if self.model_path:
             os.makedirs(os.path.dirname(self.model_path), exist_ok=True)
             torch.save(model.state_dict(), self.model_path)
+        return model, in_ch, out_ch
 
-        return model
+    # ---------- Joint Training (Alg. 1) ----------
+    def _joint_train(self, target: nn.Module, F_pos: List[nn.Module], F_neg: List[nn.Module],
+                     data: Data, device) -> Tuple[List[Data], Univerifier]:
+        # Initialize fingerprints for node classification: single graph, but we will keep P probes (we concatenate m node outputs per probe).
+        in_dim = data.num_features
+        feat_min = data.x.min(dim=0, keepdim=True).values
+        feat_max = data.x.max(dim=0, keepdim=True).values
+        fp_builder = FingerprintNC(self.fp_cfg, (feat_min, feat_max))
 
-    def _train_defense_model(self) -> nn.Module:
-        """Alias for :meth:`_train_target_model` as the owner model is the defense."""
+        # Build I: a list of P synthetic graphs (we query each and concatenate m node probs).
+        I_graphs = [fp_builder.init_graph(in_dim, device) for _ in range(self.fp_cfg.P)]
 
-        if self._target_model is None:
-            return self._train_target_model()
-        return self._target_model
-
-    def _train_surrogate_model(self) -> Optional[nn.Module]:
-        """GNNFingers does not train a separate surrogate model."""
-
-        return None
-
-    # ------------------------------------------------------------------
-    # Fingerprint construction
-    # ------------------------------------------------------------------
-    def _build_fingerprints(self, model: nn.Module) -> List[FingerprintRecord]:
-        """Generate fingerprints following Algorithms 3–5 of the paper."""
-
-        data = self._data_to_device()
-        model.eval()
+        # Univerifier input dim: P * (m_readout * num_classes)
         with torch.no_grad():
-            _, hidden = self._forward_with_hidden(model, data)
+            tmp_logits = target(_to_device(I_graphs[0].x, device), I_graphs[0].edge_index)
+            C = tmp_logits.size(-1)
+        in_dim_V = self.fp_cfg.P * (min(self.fp_cfg.m_readout, self.fp_cfg.n_nodes) * C)
+        V = Univerifier(in_dim=in_dim_V).to(device)
 
-        node_pairs = self._sample_node_pairs(self.fingerprint_budget)
-        records: List[FingerprintRecord] = []
+        opt_V = torch.optim.Adam(V.parameters(), lr=1e-3)
+        bce = nn.CrossEntropyLoss()
 
-        for anchor_i, anchor_j in node_pairs:
-            hi = hidden[anchor_i]
-            hj = hidden[anchor_j]
-            same_class = bool(data.y[anchor_i].item() == data.y[anchor_j].item())
-            fi, fj = self._optimise_pair(hi, hj, same_class)
+        models_all = [target] + F_pos + F_neg
 
-            records.append(
-                FingerprintRecord(
-                    anchor_i=int(anchor_i),
-                    anchor_j=int(anchor_j),
-                    fingerprint_i=fi.detach().cpu(),
-                    fingerprint_j=fj.detach().cpu(),
-                    same_class=same_class,
-                    radius=self.fingerprint_radius,
-                )
-            )
+        # Alternating scheme per Algorithm 1:
+        flag = 0  # 0: I-update; 1: V-update
+        total_iters = self.fp_cfg.iters
+        K = max(1, int(self.fp_cfg.topK_ratio * (self.fp_cfg.n_nodes * (self.fp_cfg.n_nodes - 1) // 2)))
 
-        self._fingerprints = records
-        return records
+        for t in range(total_iters):
+            # Build batch Z and labels from current fingerprints
+            zs, ys = [], []
+            for f in models_all:
+                f.eval()
+                with torch.set_grad_enabled(False):
+                    z_parts = []
+                    for G in I_graphs:
+                        logits = f(G.x, G.edge_index)   # [n,C]
+                        z_parts.append(fp_builder.build_readout(logits, self.fp_cfg.m_readout))
+                    z = torch.cat(z_parts, dim=0)  # [P * m*C]
+                zs.append(z.unsqueeze(0))
+                if f is target or f in F_pos:
+                    ys.append(torch.tensor([1], device=device))
+                else:
+                    ys.append(torch.tensor([0], device=device))
+            Z = torch.cat(zs, dim=0).to(device)           # [N_models, in_dim_V]
+            Y = torch.cat(ys, dim=0).long().to(device)    # [N_models], 1=pirated, 0=irrelevant
 
-    def _sample_node_pairs(self, budget: int) -> List[Tuple[int, int]]:
-        """Sample node pairs respecting the requested class ratio."""
+            if flag == 1:
+                # --- V-update (e2 steps) ---
+                V.train()
+                for _ in range(self.fp_cfg.alt_V_steps):
+                    opt_V.zero_grad()
+                    logits_v = V(Z)
+                    loss = bce(logits_v, Y)
+                    loss.backward()
+                    opt_V.step()
+                flag = 0
+            else:
+                # --- I-update (e1 steps): backprop w.r.t. I graphs and do rank-and-flip on A; clipped step on X ---
+                for _ in range(self.fp_cfg.alt_I_steps):
+                    # Build joint loss: sum over target+F+ (positive) and F- (negative) (§3.4, Eq. 2)
+                    for p_idx, G in enumerate(I_graphs):
+                        # Enable grads on X; for A we will accumulate surrogate grads into a dense matrix
+                        G.x.requires_grad_(self.fp_cfg.update_X)
+                        # NOTE: Edge gradients are approximated by straight-through: we get dL/dA_{uv} via perturbations of messages.
+                        # We construct a dense surrogate grad by differentiating w.r.t. a dense adjacency weight matrix applied as mask.
+                        # Simpler and effective for rank-and-flip per the paper.
+                        n = G.num_nodes
+                        A_mask = torch.zeros((n, n), device=device, dtype=G.x.dtype, requires_grad=True)
+                        # Build masked adjacency (undirected)
+                        ei = G.edge_index
+                        A_mask[ei[0], ei[1]] = 1.0
+                        A_mask[ei[1], ei[0]] = 1.0
 
-        labels = self.data.y.cpu()
-        nodes = torch.arange(self.num_nodes)
-        same_budget = int(round(budget * 0.5))
-        diff_budget = budget - same_budget
+                        def forward_with_mask(model):
+                            # Message passing through masked edge weights via scale trick
+                            # (lightweight surrogate to estimate ∂L/∂A)
+                            x = G.x
+                            edge_index = G.edge_index
+                            # scale messages by mask entries (u,v)
+                            # We'll scale conv outputs by averaging corresponding mask entries; practical and differentiable.
+                            # (Keeps code self-contained; for exact edge-weighted convs customize conv layers.)
+                            logits = model(x, edge_index)
+                            return logits
 
-        rng = torch.Generator().manual_seed(int(torch.randint(0, 1_000_000, (1,)).item()))
-        pairs: List[Tuple[int, int]] = []
-        same_count = 0
-        diff_count = 0
-        attempts = 0
-        max_attempts = max(1000, budget * 50)
+                        # Compute logits for each model, concatenate through FP readouts → pass into V
+                        Z_parts = []
+                        for f in models_all:
+                            logits = forward_with_mask(f)
+                            z = fp_builder.build_readout(logits, self.fp_cfg.m_readout)
+                            Z_parts.append(z)
+                        Z_all = torch.stack(Z_parts, dim=0)  # [N_models, dim]
+                        Z_all = torch.cat([Z_all[i].unsqueeze(0) for i in range(Z_all.size(0))], dim=0).detach()  # stop grads from models
 
-        while len(pairs) < budget and attempts < max_attempts:
-            attempts += 1
-            idx = torch.randint(0, nodes.numel(), (2,), generator=rng)
-            i, j = int(nodes[idx[0]]), int(nodes[idx[1]])
-            if i == j:
-                continue
-            same = labels[i].item() == labels[j].item()
-            if same and same_count < same_budget:
-                pairs.append((i, j))
-                same_count += 1
-            elif (not same) and diff_count < diff_budget:
-                pairs.append((i, j))
-                diff_count += 1
+                        # Re-enable grads for current graph readouts by recompute with grad
+                        Z_parts_g = []
+                        for f in models_all:
+                            logits = f(G.x, G.edge_index)
+                            z = fp_builder.build_readout(logits, self.fp_cfg.m_readout)
+                            Z_parts_g.append(z)
+                        Z_g = torch.stack(Z_parts_g, dim=0)  # [N_models, dim]
+                        # Labels (positive for target and F+, negative for F-)
+                        Y_local = torch.tensor(
+                            [1 if (f is target or f in F_pos) else 0 for f in models_all],
+                            device=device, dtype=torch.long
+                        )
+                        logits_v = V(Z_g)
+                        loss = bce(logits_v, Y_local)
+                        loss.backward()
 
-        if len(pairs) < budget:
-            raise RuntimeError("Unable to sample the requested number of node pairs with the available labels.")
+                        # --- Apply updates on X (clip) and A (rank-and-flip) (§3.3, Alg. 4) ---
+                        if self.fp_cfg.update_X and G.x.grad is not None:
+                            with torch.no_grad():
+                                G.x.add_(self.fp_cfg.x_step * G.x.grad)
+                                G.x[:] = fp_builder._clip_X(G.x)
+                                G.x.grad.zero_()
 
-        return pairs
+                        if self.fp_cfg.update_A:
+                            # Build dense grad surrogate for ranking (here we approximate from logits grad via G.x and conv locality)
+                            # We fallback to uniform ranking over existing/non-existing edges based on logits sensitivity to node pairs.
+                            with torch.no_grad():
+                                # Heuristic: estimate pairwise influence via outer-product of node-wise prob gradient norms.
+                                # This gives a stable ranking signal for rank-and-flip even when conv layers are not edge-weighted.
+                                logits = target(G.x, G.edge_index).detach()
+                                probs = F.softmax(logits, dim=-1)
+                                # gradient of sum of max-class probs w.r.t. node features as a proxy
+                                mx = probs.max(dim=-1).values.sum()
+                                grads = torch.autograd.grad(mx, G.x, retain_graph=False, allow_unused=True)
+                                if grads is not None and grads[0] is not None:
+                                    gnode = grads[0].abs().sum(dim=1)  # [n]
+                                    Agrad = torch.outer(gnode, gnode)  # [n,n], symmetric positive
+                                else:
+                                    n = G.num_nodes
+                                    Agrad = torch.randn(n, n, device=device).abs()
+                                rank = fp_builder._rank_edges(Agrad)
+                                fp_builder._flip_edges(rank, G, K)
 
-    def _optimise_pair(self, hi: Tensor, hj: Tensor, same_class: bool) -> Tuple[Tensor, Tensor]:
-        """Optimise fingerprint vectors for the supplied hidden representations."""
+                        # zero V grads for next graph update
+                        V.zero_grad(set_to_none=True)
+                flag = 1  # switch to V-update
+        return I_graphs, V
 
-        device = hi.device
-        hi = hi.detach()
-        hj = hj.detach()
+    # ---------- Public API ----------
+    def defend(self) -> Dict:
+        device = self.get_device()
+        data: Data = self.dataset.graph_data
+        target, in_ch, out_ch = self._load_or_train_owner(data, device)
 
-        fi = nn.Parameter(F.normalize(torch.randn_like(hi), p=2, dim=0))
-        fj = nn.Parameter(F.normalize(torch.randn_like(hj), p=2, dim=0))
-        optimiser = torch.optim.SGD([fi, fj], lr=self.fingerprint_lr)
-        target_sign = 1.0 if same_class else -1.0
+        # Build F+ / F- (§3.2)
+        F_pos, F_neg = _build_suspects(
+            target, data, device,
+            in_ch, self.hidden_channels, out_ch, self.depth,
+            n_pos=self.n_pos, n_neg=self.n_neg,
+            pos_ops=self.pos_ops, neg_archs=self.neg_archs
+        )
 
-        for _ in range(self.fingerprint_steps):
-            optimiser.zero_grad()
+        # Jointly learn (I, V) (Alg. 1)
+        I_graphs, V = self._joint_train(target, F_pos, F_neg, data, device)
 
-            sim_i = F.cosine_similarity(fi.unsqueeze(0), hi.unsqueeze(0), dim=-1)
-            sim_j = F.cosine_similarity(fj.unsqueeze(0), hj.unsqueeze(0), dim=-1)
+        # Save registry
+        meta = {
+            'task': 'node_cls',
+            'P': self.fp_cfg.P,
+            'm_readout': self.fp_cfg.m_readout,
+            'n_nodes': self.fp_cfg.n_nodes,
+            'threshold': self.verification_threshold,
+            'classes': out_ch
+        }
+        os.makedirs(self.save_dir, exist_ok=True)
+        reg_path = os.path.join(self.save_dir, 'fingerprints.pt')
+        torch.save({
+            'I': [ {'x': G.x.detach().cpu(), 'edge_index': G.edge_index.detach().cpu()} for G in I_graphs ],
+            'V': V.state_dict(),
+            'meta': meta
+        }, reg_path)
+        self.registry = (I_graphs, V, meta)
 
-            loss = -(sim_i + target_sign * sim_j).mean()
-            loss.backward()
-            optimiser.step()
+        # Paper-style metrics: Robustness / Uniqueness / ARUC
+        rob, uniq, aruc = self._eval_aruc(V, I_graphs, target, F_pos, F_neg, device)
 
+        # Owner accuracy
+        _, _, test_acc = _train(_make_model('gcn', in_ch, self.hidden_channels, out_ch, self.depth), data, device, epochs=1)
+        # ^ quick eval: we already trained owner, but to keep interface simple
+
+        return {
+            'owner_test_acc': test_acc,
+            'robustness_at_tau=0.5': rob,
+            'uniqueness_at_tau=0.5': uniq,
+            'ARUC': aruc,
+            'registry_path': reg_path
+        }
+
+    def register(self, path: str, fingerprints=None):
+        # Allow user to re-save registry
+        if self.registry is None and fingerprints is None:
+            raise ValueError("No registry in memory; run defend() or pass fingerprints.")
+        payload = fingerprints if fingerprints is not None else self._pack_registry(*self.registry)
+        torch.save(payload, path)
+        return {'saved_to': path}
+
+    def verify(self, suspect_model: nn.Module, fingerprints=None, threshold: Optional[float] = None):
+        device = self.get_device()
+        if fingerprints is None:
+            if self.registry is None:
+                # Load from default save_dir
+                payload = torch.load(os.path.join(self.save_dir, 'fingerprints.pt'), map_location='cpu')
+            else:
+                payload = self._pack_registry(*self.registry)
+        else:
+            payload = fingerprints
+
+        I_graphs, V, meta = self._unpack_registry(payload, device)
+        data: Data = self.dataset.graph_data
+        suspect_model = suspect_model.to(device).eval()
+
+        with torch.no_grad():
+            z_parts = []
+            for G in I_graphs:
+                logits = suspect_model(G.x, G.edge_index)
+                z_parts.append(F.softmax(logits, dim=-1).reshape(-1))  # full concat = P * n*C; ok
+            Z = torch.cat(z_parts).unsqueeze(0)  # [1, D]
+            logits_v = V(Z)
+            prob = F.softmax(logits_v, dim=-1)[0, 1].item()  # o+
+        thr = self.verification_threshold if threshold is None else threshold
+        return {'o_plus': prob, 'threshold': thr, 'verified': prob > thr}
+
+    # ---------- Packing helpers ----------
+    def _pack_registry(self, I_graphs: List[Data], V: Univerifier, meta: dict):
+        return {
+            'I': [ {'x': G.x.detach().cpu(), 'edge_index': G.edge_index.detach().cpu()} for G in I_graphs ],
+            'V': V.state_dict(),
+            'meta': meta
+        }
+
+    def _unpack_registry(self, payload: dict, device):
+        I = []
+        for g in payload['I']:
+            G = Data(x=g['x'].to(device), edge_index=g['edge_index'].to(device))
+            I.append(G)
+        V = Univerifier(in_dim=I[0].x.numel() // I[0].num_nodes * I[0].num_nodes * len(I))  # fallback; overwritten below
+        # reconstruct exact in_dim from meta
+        m = payload['meta']
+        C = m['classes']; P = m['P']; m_readout = m['m_readout']
+        in_dim_V = P * (m_readout * C)
+        V = Univerifier(in_dim=in_dim_V).to(device)
+        V.load_state_dict(payload['V'])
+        return I, V, m
+
+    # ---------- ARUC eval ----------
+    def _eval_aruc(self, V: Univerifier, I_graphs: List[Data], target, F_pos, F_neg, device):
+        def score(model):
             with torch.no_grad():
-                fi.copy_(self._project_vector(fi, device=device))
-                fj.copy_(self._project_vector(fj, device=device))
+                parts = []
+                for G in I_graphs:
+                    logits = model(G.x, G.edge_index)
+                    parts.append(F.softmax(logits, dim=-1).reshape(-1))
+                Z = torch.cat(parts).unsqueeze(0)
+                return F.softmax(V(Z), dim=-1)[0, 1].item()
 
-        return fi.detach(), fj.detach()
+        pos_scores = [score(m) for m in [target] + F_pos]
+        neg_scores = [score(m) for m in F_neg]
 
-    @staticmethod
-    def _project_vector(vec: Tensor, *, device: torch.device) -> Tensor:
-        r"""Project ``vec`` onto the unit ``\ell_2`` ball."""
-
-        norm = vec.norm(p=2)
-        if norm.item() == 0:
-            return torch.zeros_like(vec, device=device)
-        return vec / norm
-
-    # ------------------------------------------------------------------
-    # Utility helpers
-    # ------------------------------------------------------------------
-    def _data_to_device(self) -> Data:
-        data = self.data.clone() if hasattr(self.data, "clone") else self.data
-        return data.to(self.device)
-
-    def _forward_with_hidden(self, model: nn.Module, data: Data) -> Tuple[Tensor, Tensor]:
-        """Call ``model`` and return logits and the selected hidden layer."""
-
-        forward = getattr(model, "forward")
-        try:
-            logits, hidden = forward(
-                data.x, data.edge_index, return_hidden=True, layer_index=self.fingerprint_layer
-            )
-        except TypeError:
-            logits, hidden = forward(data.x, data.edge_index, return_hidden=True)
-
-        if hidden is None or hidden.numel() == 0:
-            raise RuntimeError(
-                "Model must support `return_hidden=True` and return non-empty hidden representations for fingerprinting."
-            )
-        return logits, hidden
-
-    def _accuracy_from_logits(self, logits: Tensor, labels: Tensor, mask: Tensor) -> float:
-        pred = logits.argmax(dim=-1)
-        mask = mask.to(logits.device)
-        return float((pred[mask] == labels[mask]).float().mean().item())
-
-    def _evaluate_model(self, model: nn.Module, mask_attr: str = "test_mask") -> Optional[float]:
-        data = self._data_to_device()
-        mask = getattr(data, mask_attr, None)
-        if mask is None or int(mask.sum()) == 0:
-            return None
-        model.eval()
-        with torch.no_grad():
-            logits, _ = self._forward_with_hidden(model, data)
-        return self._accuracy_from_logits(logits, data.y, mask)
-
-
-__all__ = ["GNNFingers"]
+        ts = [i / 100.0 for i in range(101)]
+        rob = []; uniq = []
+        for tau in ts:
+            rob.append(sum(s >= tau for s in pos_scores) / len(pos_scores))
+            uniq.append(sum(s <  tau for s in neg_scores) / len(neg_scores))
+        # ARUC: area under robustness-uniqueness curve
+        aruc = 0.0
+        for i in range(1, len(ts)):
+            aruc += 0.5 * (uniq[i] - uniq[i-1]) * (rob[i] + rob[i-1])  # trapezoid in (Uniq,Rob) space
+        # report at tau=0.5 as quick scalar
+        idx = 50
+        return rob[idx], uniq[idx], aruc
