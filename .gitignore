@@ -36,3 +36,8 @@ Icon
 
 #virtual environments folder
 .venv
+
+data/
+registry/
+registry_quick/
+ckpts/

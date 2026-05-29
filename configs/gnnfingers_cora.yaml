@@ -1,0 +1,39 @@
+seed: 0
+device: auto   # "cuda" if available else "cpu"
+
+dataset:
+  name: Cora
+  api_type: pyg
+
+model:
+  arch: gcn
+  hidden_channels: 128
+  depth: 3
+  owner_epochs: 200
+  model_path: ckpts/owner.pt
+
+fingerprint:
+  P: 64
+  n_nodes: 32
+  m_readout: 32
+  depth: 3
+  x_step: 1.0e-2
+  topK_ratio: 0.03
+  iters: 1000
+  alt_I_steps: 1
+  alt_V_steps: 1
+  update_A: true
+  update_X: true
+
+suspects:
+  n_pos: 200
+  n_neg: 200
+  pos_ops: [finetune_last, finetune_all, partial_reinit, prune, distill]
+  neg_archs: [gcn, sage]
+
+verify:
+  threshold: 0.5
+
+io:
+  save_dir: registry
+  suspects_cache_dir: suspects_cache  
